@@ -1,7 +1,7 @@
 import asyncio
 import random
 import logging
-from persistence import PersistentDict
+from .persistence import PersistentDict
 
 class State:
     def __init__(self, old_state=None, orchestrator=None):
