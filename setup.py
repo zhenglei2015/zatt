@@ -1,6 +1,15 @@
 #!/usr/bin/env python
 
+from sys import version_info as version
 from setuptools import setup, find_packages
+
+
+exclude = ['docs', 'tests']
+entry_points = {}
+if version.major < 3 or (version.major == 3 and version.minor < 4):
+    exclude += ['zatt.server']
+else:
+    entry_points.update({'console_scripts':['zattd=zatt.server.main:run']})
 
 setup(name='Zatt',
       version='1.0',
@@ -29,6 +38,7 @@ setup(name='Zatt',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
       ],
-    packages = find_packages(exclude=['docs', 'tests']),
-    entry_points = {'console_scripts':['zattd=zatt.server.main:run']},
+    # packages = ['zatt.client'],
+    packages = find_packages(exclude=exclude),
+    entry_points = entry_points,
      )
