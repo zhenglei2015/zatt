@@ -1,8 +1,11 @@
 import asyncio
 from .protocol import Orchestrator, RaftProtocol
+from .config import config
+
+
 
 def run():
-    orchestrator = Orchestrator()
+    orchestrator = Orchestrator(config())
     loop = asyncio.get_event_loop()
 
     # Each client connection will create a new protocol instance

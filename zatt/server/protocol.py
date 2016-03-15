@@ -7,9 +7,9 @@ from .states import Follower
 logging.basicConfig(level=logging.INFO)
 
 class Orchestrator():
-    def __init__(self):
-        self.cluster = {}
-        self.state = Follower(orchestrator=self)
+    def __init__(self, config):
+        self.cluster = config['cluster']
+        self.state = Follower(orchestrator=self, config=config)
 
     def change_state(self, new_state):
         self.state.teardown()

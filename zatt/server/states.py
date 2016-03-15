@@ -4,22 +4,23 @@ import logging
 from .persistence import PersistentDict
 
 class State:
-    def __init__(self, old_state=None, orchestrator=None):
+    def __init__(self, old_state=None, orchestrator=None, config=None):
         logging.info('State:' + self.__class__.__name__)
         if isinstance(old_state, State):
             self.orchestrator = old_state.orchestrator
             self.persist = old_state.persist
             self.volatile = old_state.volatile
-        elif orchestrator is not None:
+        elif orchestrator and config:
             self.orchestrator = orchestrator
-            orchestrator.cluster = {0: {'info':('127.0.0.1', 8889)}}
-            self.persist = PersistentDict('persistence.json',
+            orchestrator.cluster = config['cluster']
+            self.persist = PersistentDict(config['storage'],
                                           {'log': [],
                                            'votedFor': None,
                                            'currentTerm': 0})
-            self.volatile = {'commitIndex': 0, 'lastApplied': 0,
+            self.volatile = {'commitIndex': 0,
+                             'lastApplied': 0,
                              'leaderId': None,
-                             'Id': 10}
+                             'Id': config['id']}
 
     def data_received_peer(self, peer_id, message):
         if message['term'] > self.persist['currentTerm']\
@@ -70,8 +71,8 @@ class State:
 
 
 class Follower(State):
-    def __init__(self, old_state=None, orchestrator=None):
-        super().__init__(old_state, orchestrator)
+    def __init__(self, old_state=None, orchestrator=None, config=None):
+        super().__init__(old_state, orchestrator, config)
         self.restart_election_timer()
 
     def teardown(self):
