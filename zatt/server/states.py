@@ -20,7 +20,8 @@ class State:
             self.volatile = {'commitIndex': 0,
                              'lastApplied': 0,
                              'leaderId': None,
-                             'Id': config['id']}
+                             'Id': config['id'],
+                             'debug':config['debug']}
 
     def data_received_peer(self, peer_id, message):
         if message['term'] > self.persist['currentTerm']\
@@ -82,7 +83,8 @@ class Follower(State):
         if hasattr(self, 'election_timer'):
             self.election_timer.cancel()
 
-        timeout = random.randrange(100,300) * 10 ** -3
+        timeout = random.randrange(1,3)
+        timeout = timeout * 10 ** (0.3 if self.volatile['debug'] else -1)
 
         loop = asyncio.get_event_loop()
         self.election_timer = loop.call_later(timeout,
@@ -152,7 +154,8 @@ class Leader(State):
         if hasattr(self, 'empty_append_timer'):
             self.empty_append_timer.cancel()
 
-        timeout = random.randrange(100,300) * 10 ** -4  # TODO check range
+        timeout = random.randrange(1,4)
+        timeout = timeout * 10 ** (0.3 if self.volatile['debug'] else -2)
 
         loop = asyncio.get_event_loop()
         self.empty_append_timer = loop.call_later(timeout,

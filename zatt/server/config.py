@@ -21,6 +21,7 @@ parser.add_argument('--node-address', action='append', default=[],
                     help='Remote node address')
 parser.add_argument('--node-port', action='append', default=[],
                     help='Remote node port')
+parser.add_argument('--debug', action='store_true', help='Enable debug mode')
 
 def config():
     args = parser.parse_args()
@@ -33,7 +34,7 @@ def config():
         print('Config file not found')
         sys.exit(1)
 
-    config = {'id':args.id, 'cluster': {}}
+    config = {'id':args.id, 'cluster': {}, 'debug':args.debug}
 
     path = args.path_config if args.path_config else 'zatt.conf'
     if os.path.isfile(path):
@@ -61,6 +62,6 @@ def config():
     cluster = config['cluster']
     config['cluster'] = {}
     for k,v in cluster.items():
-        config['cluster'][int(k)] = {'info': tuple(v)}
+        config['cluster'][int(k)] = {'info': (v[0], int(v[1]))}
 
     return config
