@@ -28,7 +28,7 @@ class Orchestrator():
 
     def data_received(self, transport, message):
         for peer_id, peer in self.cluster.items():
-            if peer['transport'] is transport:
+            if peer.get('transport', None) is transport:
                 self.state.data_received_peer(peer_id, message)
                 return
         self.state.data_received_client(transport, message)
