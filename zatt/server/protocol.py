@@ -42,15 +42,18 @@ class Orchestrator():
             transport = self.cluster[peer_id]['transport']
             self.send(transport, message)
         else:
-            loop = asyncio.get_event_loop()
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
-            sock.bind(self.cluster[self.state.volatile['Id']]['info'])
-            sock.connect(self.cluster[peer_id]['info'])
-            sock.setblocking(False)
-            coro = loop.create_connection(lambda: RaftProtocol(self, message),
-                                          sock=sock)
-            loop.create_task(coro)
+            try:
+                loop = asyncio.get_event_loop()
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
+                sock.bind(self.cluster[self.state.volatile['Id']]['info'])
+                sock.connect(self.cluster[peer_id]['info'])
+                sock.setblocking(False)
+                coro = loop.create_connection(\
+                    lambda: RaftProtocol(self, message), sock=sock)
+                loop.create_task(coro)
+            except ConnectionRefusedError:
+                logging.error('Connection refused: peer {}'.format(peer_id))
 
     def broadcast_peers(self, message):
         for peer_id in self.cluster:
