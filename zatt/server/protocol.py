@@ -45,7 +45,7 @@ class Orchestrator():
             loop = asyncio.get_event_loop()
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
-            sock.bind(('127.0.0.1', 8888))
+            sock.bind(self.cluster[self.state.volatile['Id']]['info'])
             sock.connect(self.cluster[peer_id]['info'])
             sock.setblocking(False)
             coro = loop.create_connection(lambda: RaftProtocol(self, message),

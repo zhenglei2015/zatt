@@ -23,7 +23,7 @@ parser.add_argument('--node-port', action='append', default=[],
                     help='Remote node port')
 parser.add_argument('--debug', action='store_true', help='Enable debug mode')
 
-def config():
+def fetch_config():
     args = parser.parse_args()
     if len(args.node_id) != len(args.node_port)\
     or len(args.node_id) != len(args.node_address):
@@ -34,7 +34,7 @@ def config():
         print('Config file not found')
         sys.exit(1)
 
-    config = {'id':args.id, 'cluster': {}, 'debug':args.debug}
+    config = {'id':int(args.id), 'cluster': {}, 'debug':args.debug}
 
     path = args.path_config if args.path_config else 'zatt.conf'
     if os.path.isfile(path):

@@ -1,16 +1,18 @@
 import asyncio
 from .protocol import Orchestrator, RaftProtocol
-from .config import config
+from .config import fetch_config
 
 
 
 def run():
-    orchestrator = Orchestrator(config())
+    config = fetch_config()
+    orchestrator = Orchestrator(config)
     loop = asyncio.get_event_loop()
 
     # Each client connection will create a new protocol instance
     coro = loop.create_server(lambda: RaftProtocol(orchestrator),
-                              '127.0.0.1', 8888, reuse_port=True)
+                              *config['cluster'][config['id']]['info'],
+                              reuse_port=True)
     server = loop.run_until_complete(coro)
 
     # Serve requests until Ctrl+C is pressed
