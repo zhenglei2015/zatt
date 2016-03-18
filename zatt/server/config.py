@@ -50,9 +50,6 @@ def fetch_config():
     for x in zip(args.node_id, args.node_address, args.node_port):
         config['cluster'][x[0]] = x[1:3]
 
-    if config['id'] not in config['cluster']:
-        config['cluster'][config['id']] = ['127.0.0.1', '5254']
-
     if args.address:
         config['cluster'][config['id']][0] = args.address
 
@@ -61,7 +58,9 @@ def fetch_config():
 
     cluster = config['cluster']
     config['cluster'] = {}
-    for k,v in cluster.items():
-        config['cluster'][int(k)] = {'info': (v[0], int(v[1]))}
+    config['cluster'] = {int(k):(v[0], int(v[1])) for (k,v) in cluster.items()}
+
+    if config['id'] not in config['cluster']:
+        config['cluster'][config['id']] = ['127.0.0.1', '5254']
 
     return config
