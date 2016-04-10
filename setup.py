@@ -17,7 +17,7 @@ setup(name='Zatt',
       author='Simone Accascina',
       author_email='simon@accascina.me',
       url='https://github.com/simonacca/zatt',
-      license='MIT',
+      license='GPL',
       keywords = 'distributed consensus raft',
       classifiers=[
         'Development Status :: 3 - Alpha',
@@ -27,7 +27,7 @@ setup(name='Zatt',
         'Topic :: Distributed Systems :: Consens Algorithms',
 
         # Pick your license as you wish (should match "license" above)
-        'License :: OSI Approved :: MIT License',
+        'License :: OSI Approved :: GPL License',
 
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
