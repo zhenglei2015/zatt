@@ -1,6 +1,6 @@
 import asyncio
 import random
-from .persistence import PersistentDict
+from .persistence import PersistentDict, LogDict
 from .logger import logger
 
 class State:
@@ -10,14 +10,15 @@ class State:
             self.orchestrator = old_state.orchestrator
             self.persist = old_state.persist
             self.volatile = old_state.volatile
+            self.log = old_state.log
         elif orchestrator and config:
             self.orchestrator = orchestrator
             self.persist = PersistentDict(config['storage'],
-                                          {'log': [], 'votedFor': None,
+                                          {'votedFor': None,
                                            'currentTerm': 0})
-            self.volatile = {'commitIndex': 0, 'lastApplied': 0,
-                             'leaderId': None, 'Id': config['id'],
+            self.volatile = {'leaderId': None, 'Id': config['id'],
                              'debug':config['debug']}
+            self.log = LogDict(config['storage'])
 
     def data_received_peer(self, peer_id, message):
         logger.debug('Received {} from {}'.format(message['type'], peer_id))
@@ -48,9 +49,10 @@ class State:
             logger.info('Received unrecognized message from client')
 
     def handle_request_vote(self, peer_id, message):
+        self.restart_election_timer()
         term_is_current =  message['term'] >= self.persist['currentTerm']
         can_vote = self.persist['votedFor'] in [None, message['candidateId']]
-        index_is_current = message['lastLogIndex'] >= len(self.persist['log'])
+        index_is_current = message['lastLogIndex'] >= self.log.index
         vote = term_is_current and can_vote and index_is_current
 
         if vote:
@@ -96,24 +98,17 @@ class Follower(State):
 
     def handle_append_entries(self, peer_id, message):
         self.restart_election_timer()
-        logger.debug('Appending {} entries'.format(len(message['entries'])))
-        response = {'success': True, 'term': self.persist['currentTerm'],
-                   'type': 'response_append'}
-        self.orchestrator.send_peer(peer_id, response)
-        return # TODO: FIX function
-        wrong_current_term = message['term'] < self.persist['currentTerm']
-        wrong_prev_log_term = self.persist['log'][message['prevLogIndex']]\
-            ['term'] != message['prevLogTerm']
-        success = not (wrong_current_term or wrong_prev_log_term)
+
+        term_is_current = message['term'] >= self.persist['currentTerm']
+        prev_log_term_match = message['prevLogIndex'] is None or\
+            self.log[message['prevLogIndex']]['term'] == message['prevLogTerm']
+        success = term_is_current and prev_log_term_match
 
         if success:
-            self.persist['log'] = self.persist['log'][:message['prevLogIndex'] + 1]
-            self.persist['log'] += message['entries']
+            self.log.append_entries(message['entries'], message['prevLogIndex'])
             self.volatile['leaderId'] = message['leaderId']
-
-            if message['leaderCommit'] > self.volatile['commitIndex']:
-                self.volatile['commitIndex'] =  min(message['leaderCommit'],
-                                                 len(self.persist['log']))
+            if message['leaderCommit'] > self.log.commitIndex:
+                self.log.commit(message['leaderCommit'])
 
         response = {'success': success, 'term': self.persist['currentTerm'],
                    'type': 'response_append'}
@@ -134,8 +129,8 @@ class Candidate(Follower):
         logger.info('Sending vote requests')
         message = {'type': 'request_vote', 'term': self.persist['currentTerm'],
                    'candidateId': self.volatile['Id'],
-                   'lastLogIndex': len(self.persist['log']),
-                   'lastLogTerm': self.persist['log'][-1]['term'] if self.persist['log'] else 0}  # TODO: fix with new Log
+                   'lastLogIndex': self.log.index,
+                   'lastLogTerm': self.log.term}
         self.orchestrator.broadcast_peers(message)
 
     def handle_append_entries(self, peer_id, message):
@@ -174,11 +169,12 @@ class Leader(State):
     def send_append_entries(self, entries=[]):
         self.restart_empty_append_timer()
         logger.debug('Sending AppenEntries: {} entries'.format(len(entries)))
+        self.log.append_entries(entries, self.log.commitIndex)
 
         loop = asyncio.get_event_loop()
         message = {'type': 'append_entries', 'entries':entries,
                    'term': self.persist['currentTerm'],
-                   'leaderCommit': self.volatile['commitIndex'],
+                   'leaderCommit': self.log.commitIndex,
                    'leaderId': self.volatile['Id'],
                    'prevLogIndex': None,  # TODO log
                    'prevLogTerm': None}  # TODO log
