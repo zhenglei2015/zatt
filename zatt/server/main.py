@@ -1,7 +1,7 @@
 import asyncio
-from .protocol import Orchestrator, PeerProtocol
+from .protocol import Orchestrator, PeerProtocol, ClientProtocol
 from .config import fetch_config
-from .logger import logger, tick
+from .logger import logger
 
 
 
@@ -13,7 +13,10 @@ def run():
     coro = loop.create_datagram_endpoint(lambda: PeerProtocol(orchestrator),
                               local_addr=config['cluster'][config['id']])
     transport, _ = loop.run_until_complete(coro)
-    orchestrator.transport = transport
+    orchestrator.peer_transport = transport
+
+    coro = loop.create_server(ClientProtocol, *config['cluster'][config['id']])
+    server = loop.run_until_complete(coro)
 
     logger.info('Serving on {}'.format(config['cluster'][config['id']]))
     try:
@@ -22,6 +25,8 @@ def run():
         pass
 
     # Close the server
+    server.close()
+    loop.run_until_complete(server.wait_closed())
     loop.close()
 
 if __name__ == '__main__':

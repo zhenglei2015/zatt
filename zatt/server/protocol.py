@@ -14,19 +14,20 @@ class Orchestrator():
         self.state.teardown()
         self.state = new_state(old_state=self.state)
 
-    def data_received(self, addr, message):
+    def data_received_peer(self, addr, message):
         for peer_id, peer in self.cluster.items():
             if peer == addr:
                 self.state.data_received_peer(peer_id, message)
-                return
+
+    def data_received_client(self, transport, message):
         self.state.data_received_client(transport, message)
 
     def send(self, transport, message):
         transport.sendto(str(json.dumps(message)).encode())
 
     def send_peer(self, peer_id, message):
-        self.transport.sendto(str(json.dumps(message)).encode(),
-                              self.cluster[peer_id])
+        self.peer_transport.sendto(str(json.dumps(message)).encode(),
+                                   self.cluster[peer_id])
 
     def broadcast_peers(self, message):
         for peer_id in self.cluster:
@@ -46,7 +47,19 @@ class PeerProtocol(asyncio.Protocol):
 
     def datagram_received(self, data, addr):
         message = json.loads(data.decode())
-        self.orchestrator.data_received(addr, message)
+        self.orchestrator.data_received_peer(addr, message)
 
     def error_received(self, ex):
         print('Error:', ex)
+
+
+class ClientProtocol(asyncio.Protocol):
+    def __init__(self, orchestrator):
+        self.orchestrator = orchestrator
+
+    def connection_made(self, transport):
+        self.transport = transport
+
+    def data_received(self, data):
+        message = json.loads(data.decode())
+        self.orchestrator.data_received_client(self.transport, message)
