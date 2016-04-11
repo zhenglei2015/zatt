@@ -153,35 +153,23 @@ import random  # TODO: debug
 class Leader(State):
     def __init__(self, old_state=None, orchestrator=None, config=None):
         super().__init__(old_state, orchestrator, config)
-        self.volatile_leader = {x:{'nextIndex':self.log.commitIndex + 1,  # TODO: review: could it be self.log.index
-                                   'matchIndex': 0} for x in\
-                                fetch_config()['cluster']}
+        self.cluster = fetch_config()['cluster']
+        self.leader_status = {x:{'nextIndex':self.log.commitIndex + 1,  # TODO: review: could it be self.log.index ?
+                                   'matchIndex': 0} for x in self.cluster}
+        self.counter = {self.log.commitIndex: len(self.cluster)}
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
         self.send_append_entries()
-        self.restart_empty_append_timer()
 
     def teardown(self):
-        self.empty_append_timer.cancel()
+        self.append_timer.cancel()
 
-    def restart_empty_append_timer(self):
-        logger.debug('Empty AppendEntries timer restarted')
-        if hasattr(self, 'empty_append_timer'):
-            self.empty_append_timer.cancel()
-
-        timeout = random.randrange(1,4)
-        timeout = timeout * 10 ** (-1 if self.volatile['debug'] else -2)
-
-        loop = asyncio.get_event_loop()
-        self.empty_append_timer = loop.call_later(timeout,
-                                                  self.send_append_entries)
-
-    def send_append_entries(self, entries=[]):
-        self.restart_empty_append_timer()
-        entries = [{'key': random.randint(1,10), 'value': random.randint(20,30),
-                    'action': 'change'}] # TODO: debug
-        entries = list(map(lambda x:{'term': self.persist['currentTerm'],
-                                     'data': x}, entries)) # TODO: debug
-        logger.debug('Broadcasting append_entries: {} entries'.format(len(entries)))
+    def send_append_entries(self):
+        self.restart_append_timer()
+        # entries = [{'key': random.randint(1,10), 'value': random.randint(20,30),
+        #             'action': 'change'}] # TODO: debug
+        # entries = list(map(lambda x:{'term': self.persist['currentTerm'],
+        #                              'data': x}, entries)) # TODO: debug
+        # logger.debug('Broadcasting append_entries: {} entries'.format(len(entries)))
 
         message = {'type': 'append_entries', 'entries':entries,
                    'term': self.persist['currentTerm'],
@@ -190,19 +178,51 @@ class Leader(State):
                    'prevLogIndex': self.log.index,
                    'prevLogTerm': self.log.term}
         self.orchestrator.broadcast_peers(message)
-        self.log.commitIndex = self.log.index #  TODO: just for debug, RMOVE!
+        # self.log.commitIndex = self.log.index #  TODO: just for debug, RMOVE!
 
-        self.log.append_entries(entries, self.log.index)
-        logger.debug('Log length is now {}'.format((len(self.log.log))))
+        # self.log.append_entries(entries, self.log.index)
+        # logger.debug('Log length is now {}'.format((len(self.log.log))))
+
+
+        for peer in self.leader_status:
+            message = {'type': 'append_entries', 'entries':entries,
+                       'term': self.persist['currentTerm'],
+                       'leaderCommit': self.log.commitIndex,
+                       'leaderId': self.volatile['Id'],
+                       'prevLogIndex': self.log.index,
+                       'prevLogTerm': self.log.term}
+
+
+
+
+
+
+
+
+        timeout = random.randrange(1,4)
+        timeout = timeout * 10 ** (-1 if self.volatile['debug'] else -2)
+        loop = asyncio.get_event_loop()
+        self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
     def handle_response_append(self, peer_id, message):
         if message['success']:
-            self.volatile_leader[peer_id]['matchIndex'] =\
-                self.volatile_leader[peer_id]['nextIndex']
+            self.leader_status[peer_id]['matchIndex'] =\
+                self.leader_status[peer_id]['nextIndex']
+
+            self.counter[self.leader_status[peer_id]['nextIndex']] -=1
+            self.leader_status[peer_id]['nextIndex'] += 1
+            self.counter[self.leader_status[peer_id]['nextIndex']] +=1
+
+            count = 0
+            for category in reversed(sorted(self.counter)):
+                count += self.counter[category]
+                if count / len(self.cluster) > 0.5:
+                    self.log.commit(category)
+                    break
         else:
             logger.warning('Peer {} refused entry with index {}'.format(\
-                peer_id, self.volatile_leader[peer_id]['nextIndex']))
-            self.volatile_leader[peer_id]['nextIndex'] -= 1
+                peer_id, self.leader_status[peer_id]['nextIndex']))
+            self.leader_status[peer_id]['nextIndex'] -= 1
 
 
     def handle_client_append(self, transport, message):
