@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 
 class PersistentDict(dict):
     def __init__(self, filepath = None, model = None):
@@ -28,6 +29,7 @@ class LogDictMachine:
 
     def apply(self, items):
         for item in items:
+            item = item['data']
             if item['action'] == 'change':
                 self.state_machine[item['key']] = item['value']
             elif item['action'] == 'delete':
@@ -46,7 +48,7 @@ class LogDict:
 
     @property
     def index(self):
-        return self.compacted_index + len(self.log)
+        return max(self.compacted_index + len(self.log) - 1, 0)
 
     @property
     def term(self):
@@ -55,24 +57,31 @@ class LogDict:
         else:
             return self.compacted_term
 
+    def __getitem__(self, index):
+        #  TODO: what if index < self.compacted_index ?
+        return self.log[index - self.compacted_index]
 
     def append_entries(self, entries, prevLogIndex):
-        #  TODO: check that prevLogIndex > self.compacted_index
-        del self.log[prevLogIndex - self.compacted_index:]
+        #  TODO: what if prevLogIndex < self.commitIndex ?
+        del self.log[prevLogIndex - self.compacted_index + 1:]
         self.log += entries
 
-    def __getitem__(self, index):
-        #  TODO: check that prevLogIndex > self.compacted_index
-        if index > self.compacted_index:
-            return self.log[item - self.compacted_index]
-        else:
-            return {'term': self.compacted_index}  # TODO: incomplete
+    def commit(self, leaderCommit):
+        ## TODO: what if  leaderCommit > self.compacted_index?
+        if leaderCommit > self.commitIndex:
+            self.commitIndex = min(leaderCommit, self.index)
+            self.state_machine.apply(self.log[self.lastApplied:self.commitIndex])
+            self.lastApplied = self.commitIndex
+            # self.touch_compaction_timer() # TODO: right place?
 
-    def commit(self, newCommitIndex):
-        ## TODO: chec that index > self.compacted_index
-        self.commitIndex = min(newCommitIndex, self.index)
-        self.state_machine.apply(self.log[self.lastApplied:self.commitIndex])
-        self.lastApplied = self.commitIndex
+    def touch_compaction_timer(self):
+        if not hasattr(self, 'compaction_timer'):
+            loop = asyncio.get_event_loop()
+            self.compaction_timer = loop.call_later(5, compact, self)
 
-    def compact(self, n):
-        pass
+    def compact(self):
+        del self.compaction_timer
+        self.compacted_log = self.state_machine.state_machine
+        del self.log[:self.lastApplied - self.compacted_index]
+        self.compacted_index = self.lastApplied
+        self.compacted_term = self.log[self.lastApplied]['commit']

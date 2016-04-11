@@ -2,6 +2,7 @@ import asyncio
 import random
 from .persistence import PersistentDict, LogDict
 from .logger import logger
+from .config import fetch_config
 
 class State:
     def __init__(self, old_state=None, orchestrator=None, config=None):
@@ -100,15 +101,19 @@ class Follower(State):
         self.restart_election_timer()
 
         term_is_current = message['term'] >= self.persist['currentTerm']
-        prev_log_term_match = message['prevLogIndex'] is None or\
-            self.log[message['prevLogIndex']]['term'] == message['prevLogTerm']
+        prev_log_term_match = self.log.index >= message['prevLogIndex'] and\
+            (message['prevLogIndex'] == 0 or\
+            self.log[message['prevLogIndex']]['term'] == message['prevLogTerm'])
         success = term_is_current and prev_log_term_match
 
         if success:
             self.log.append_entries(message['entries'], message['prevLogIndex'])
             self.volatile['leaderId'] = message['leaderId']
-            if message['leaderCommit'] > self.log.commitIndex:
-                self.log.commit(message['leaderCommit'])
+            self.log.commit(message['leaderCommit'])
+            logger.debug('Log length is now {}'.format((len(self.log.log))))
+        else:
+            logger.warning('Couldnt append entries. cause: {}'.format('term\
+                mismatch' if not term_is_current else 'prev log term mismatch'))
 
         response = {'success': success, 'term': self.persist['currentTerm'],
                    'type': 'response_append'}
@@ -126,7 +131,7 @@ class Candidate(Follower):
         self.send_vote_requests()
 
     def send_vote_requests(self):
-        logger.info('Sending vote requests')
+        logger.info('Broadcasting request_vote')
         message = {'type': 'request_vote', 'term': self.persist['currentTerm'],
                    'candidateId': self.volatile['Id'],
                    'lastLogIndex': self.log.index,
@@ -144,11 +149,15 @@ class Candidate(Follower):
         if self.votes_count > len(self.orchestrator.cluster) / 2:
             self.orchestrator.change_state(Leader)
 
+import random  # TODO: debug
 class Leader(State):
     def __init__(self, old_state=None, orchestrator=None, config=None):
         super().__init__(old_state, orchestrator, config)
+        self.volatile_leader = {x:{'nextIndex':self.log.commitIndex + 1,  # TODO: review: could it be self.log.index
+                                   'matchIndex': 0} for x in\
+                                fetch_config()['cluster']}
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
-        self.send_append_entries([])
+        self.send_append_entries()
         self.restart_empty_append_timer()
 
     def teardown(self):
@@ -168,20 +177,33 @@ class Leader(State):
 
     def send_append_entries(self, entries=[]):
         self.restart_empty_append_timer()
-        logger.debug('Sending AppenEntries: {} entries'.format(len(entries)))
-        self.log.append_entries(entries, self.log.commitIndex)
+        entries = [{'key': random.randint(1,10), 'value': random.randint(20,30),
+                    'action': 'change'}] # TODO: debug
+        entries = list(map(lambda x:{'term': self.persist['currentTerm'],
+                                     'data': x}, entries)) # TODO: debug
+        logger.debug('Broadcasting append_entries: {} entries'.format(len(entries)))
 
-        loop = asyncio.get_event_loop()
         message = {'type': 'append_entries', 'entries':entries,
                    'term': self.persist['currentTerm'],
                    'leaderCommit': self.log.commitIndex,
                    'leaderId': self.volatile['Id'],
-                   'prevLogIndex': None,  # TODO log
-                   'prevLogTerm': None}  # TODO log
+                   'prevLogIndex': self.log.index,
+                   'prevLogTerm': self.log.term}
         self.orchestrator.broadcast_peers(message)
+        self.log.commitIndex = self.log.index #  TODO: just for debug, RMOVE!
+
+        self.log.append_entries(entries, self.log.index)
+        logger.debug('Log length is now {}'.format((len(self.log.log))))
 
     def handle_response_append(self, peer_id, message):
-        pass  # TODO log
+        if message['success']:
+            self.volatile_leader[peer_id]['matchIndex'] =\
+                self.volatile_leader[peer_id]['nextIndex']
+        else:
+            logger.warning('Peer {} refused entry with index {}'.format(\
+                peer_id, self.volatile_leader[peer_id]['nextIndex']))
+            self.volatile_leader[peer_id]['nextIndex'] -= 1
+
 
     def handle_client_append(self, transport, message):
         pass  # TODO
