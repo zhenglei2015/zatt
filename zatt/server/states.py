@@ -48,23 +48,6 @@ class State:
         else:
             logger.info('Received unrecognized message from client')
 
-    def handle_request_vote(self, peer_id, message):
-        self.restart_election_timer()
-        term_is_current =  message['term'] >= self.persist['currentTerm']
-        can_vote = self.persist['votedFor'] in [None, message['candidateId']]
-        index_is_current = message['lastLogIndex'] >= self.log.index
-        vote = term_is_current and can_vote and index_is_current
-
-        if vote:
-            self.persist['votedFor'] = message['candidateId']
-
-        logger.debug('Voting for {}. Term:{} Vote:{} Index:{}'.format(peer_id,\
-            term_is_current, can_vote, index_is_current))
-
-        response = {'type': 'response_vote', 'voteGranted': vote,
-                   'term': self.persist['currentTerm']}
-        self.orchestrator.send_peer(peer_id, response)
-
     def handle_client_append(self, transport, message):
         response = {'type': 'redirect', 'leaderId': self.volatile['leaderId']}
         self.orchestrator.send(transport, response)
@@ -95,6 +78,23 @@ class Follower(State):
         self.election_timer = loop.call_later(timeout,
             self.orchestrator.change_state, Candidate)
         logger.debug('Election timer restarted: {}s'.format(timeout))
+
+    def handle_request_vote(self, peer_id, message):
+        self.restart_election_timer()
+        term_is_current =  message['term'] >= self.persist['currentTerm']
+        can_vote = self.persist['votedFor'] in [None, message['candidateId']]
+        index_is_current = message['lastLogIndex'] >= self.log.index
+        vote = term_is_current and can_vote and index_is_current
+
+        if vote:
+            self.persist['votedFor'] = message['candidateId']
+
+        logger.debug('Voting for {}. Term:{} Vote:{} Index:{}'.format(peer_id,\
+            term_is_current, can_vote, index_is_current))
+
+        response = {'type': 'response_vote', 'voteGranted': vote,
+                   'term': self.persist['currentTerm']}
+        self.orchestrator.send_peer(peer_id, response)
 
     def handle_append_entries(self, peer_id, message):
         self.restart_election_timer()
