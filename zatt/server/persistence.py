@@ -59,7 +59,10 @@ class LogDict:
 
     def __getitem__(self, index):
         #  TODO: what if index < self.compacted_index ?
-        return self.log[index - self.compacted_index]
+        if type(index) is slice:
+            return self.log[index]
+        elif type(index) is int:
+            return self.log[index - self.compacted_index]
 
     def append_entries(self, entries, prevLogIndex):
         #  TODO: what if prevLogIndex < self.commitIndex ?
