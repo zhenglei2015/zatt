@@ -1,25 +1,23 @@
 import asyncio
 import random
-from collections import Counter
+from collections import Counter, OrderedDict
 from .persistence import PersistentDict, LogDict
 from .logger import logger
-from .config import conig
+from .config import config
 
 class State:
-    def __init__(self, old_state=None, orchestrator=None, config=None):
-        logger.info('State change:' + self.__class__.__name__)
+    def __init__(self, config, old_state=None, orchestrator=None):
+        self.config = config
         if old_state:
             self.orchestrator = old_state.orchestrator
             self.persist = old_state.persist
             self.volatile = old_state.volatile
             self.log = old_state.log
-        elif orchestrator and config:
+        elif orchestrator:
             self.orchestrator = orchestrator
             self.persist = PersistentDict(config['storage'],
-                                          {'votedFor': None,
-                                           'currentTerm': 0})
-            self.volatile = {'leaderId': None, 'Id': config['id'],
-                             'debug':config['debug']}
+                                          {'votedFor': None, 'currentTerm': 0})
+            self.volatile = {'leaderId': None, 'Id': config['id']}
             self.log = LogDict(config['storage'])
 
     def data_received_peer(self, peer_id, message):
@@ -61,8 +59,8 @@ class State:
 
 
 class Follower(State):
-    def __init__(self, old_state=None, orchestrator=None, config=None):
-        super().__init__(old_state, orchestrator, config)
+    def __init__(self, config, old_state=None, orchestrator=None):
+        super().__init__(config, old_state, orchestrator)
         self.persist['votedFor'] = None
         self.restart_election_timer()
 
@@ -74,7 +72,7 @@ class Follower(State):
             self.election_timer.cancel()
 
         timeout = random.randrange(1,4)
-        timeout = timeout * 10 ** (0 if self.volatile['debug'] else -1)
+        timeout = timeout * 10 ** (0 if self.config['debug'] else -1)
 
         loop = asyncio.get_event_loop()
         self.election_timer = loop.call_later(timeout,
@@ -122,8 +120,8 @@ class Follower(State):
 
 
 class Candidate(Follower):
-    def __init__(self, old_state=None, orchestrator=None, config=None):
-        super().__init__(old_state, orchestrator, config)
+    def __init__(self, config, old_state=None, orchestrator=None):
+        super().__init__(config, old_state, orchestrator)
         self.persist['currentTerm'] += 1
         self.persist['votedFor'] = self.volatile['Id']
         self.votes_count = 1
@@ -147,13 +145,13 @@ class Candidate(Follower):
     def handle_response_vote(self, peer_id, message):
         self.votes_count += message['voteGranted']
         logger.info('Vote count: {}'.format(self.votes_count))
-        if self.votes_count > len(self.orchestrator.cluster) / 2:
+        if self.votes_count > len(self.config['cluster']) / 2:
             self.orchestrator.change_state(Leader)
 
 class Leader(State):
-    def __init__(self, old_state=None, orchestrator=None, config=None):
-        super().__init__(old_state, orchestrator, config)
-        self.nextIndex = {x: self.log.commitIndex for x in config['cluster']}
+    def __init__(self, config, old_state=None, orchestrator=None):
+        super().__init__(config, old_state, orchestrator)
+        self.nextIndex = {x: self.log.commitIndex for x in self.config['cluster']}
 
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
         self.send_append_entries()
@@ -163,23 +161,21 @@ class Leader(State):
 
     def send_append_entries(self):
         for peer_id in config['cluster']:
-            if peer_id == self.volatile['Id']:
-                continue
-
-            entries = self.log[self.nextIndex[peer_id]:]
-            message = {'type': 'append_entries', 'entries':entries,
+            message = {'type': 'append_entries',
+                       'entries':self.log[self.nextIndex[peer_id]:],
                        'term': self.persist['currentTerm'],
                        'leaderCommit': self.log.commitIndex,
                        'leaderId': self.volatile['Id'],
                        'prevLogIndex': max(self.nextIndex[peer_id] - 1, 0),
                        'prevLogTerm': self.log[self.nextIndex[peer_id] - 1]['term'] if self.log.index else 0}
 
-            logger.debug('Sending entry with index {} to {}'\
-                .format(self.nextIndex[peer_id], peer_id))
+            logger.debug('Sending {} entries to {}. Start index {}'\
+                .format(len(message['entries']), peer_id,
+                        self.nextIndex[peer_id]))
             self.orchestrator.send_peer(peer_id, message)
 
         timeout = random.randrange(1,4)
-        timeout = timeout * 10 ** (-1 if self.volatile['debug'] else -2)
+        timeout = timeout * 10 ** (-1 if self.config['debug'] else -2)
         loop = asyncio.get_event_loop()
         self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
@@ -189,11 +185,12 @@ class Leader(State):
                 min(self.log.index, self.nextIndex[peer_id] + 1)
 
             index_counter = Counter(self.nextIndex.values())
-            count = 0
-            for category in reversed(sorted(index_counter)):
-                count += index_counter[category]
-                if count / len(config['cluster']) > 0.5:
-                    self.log.commit(category)
+            index_counter = OrderedDict(reversed(sorted(index_counter.items())))
+            total = 0
+            for index, count in index_counter.items():
+                total += count
+                if total / len(config['cluster']) > 0.5:
+                    self.log.commit(index)
                     break
         else:
             logger.warning('Peer {} refused entry with index {}'.format(\

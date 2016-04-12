@@ -7,15 +7,16 @@ from .logger import logger
 
 class Orchestrator():
     def __init__(self, config):
-        self.cluster = config['cluster']
-        self.state = Follower(orchestrator=self, config=config)
+        self.config = config
+        self.state = Follower(config=self.config, orchestrator=self)
 
     def change_state(self, new_state):
         self.state.teardown()
-        self.state = new_state(old_state=self.state)
+        logger.info('State change:' + new_state.__name__)
+        self.state = new_state(config=self.config, old_state=self.state)
 
     def data_received_peer(self, addr, message):
-        for peer_id, peer in self.cluster.items():
+        for peer_id, peer in self.config['cluster'].items():
             if peer == addr:
                 self.state.data_received_peer(peer_id, message)
                 break
@@ -30,10 +31,10 @@ class Orchestrator():
         if peer_id == self.state.volatile['Id']:
             return
         self.peer_transport.sendto(str(json.dumps(message)).encode(),
-                                   self.cluster[peer_id])
+                                   self.config['cluster'][peer_id])
 
     def broadcast_peers(self, message):
-        for peer_id in self.cluster:
+        for peer_id in self.config['cluster']:
             self.send_peer(peer_id, message)
 
 
