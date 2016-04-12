@@ -101,6 +101,7 @@ class Follower(State):
         self.restart_election_timer()
 
         term_is_current = message['term'] >= self.persist['currentTerm']
+        print(message['prevLogIndex'])
         prev_log_term_match = self.log.index >= message['prevLogIndex'] and\
             (message['prevLogIndex'] == 0 or\
             self.log[message['prevLogIndex']]['term'] == message['prevLogTerm'])
@@ -149,13 +150,13 @@ class Candidate(Follower):
         if self.votes_count > len(self.orchestrator.cluster) / 2:
             self.orchestrator.change_state(Leader)
 
-import random  # TODO: debug
 class Leader(State):
     def __init__(self, old_state=None, orchestrator=None, config=None):
         super().__init__(old_state, orchestrator, config)
         self.cluster = fetch_config()['cluster']
-        self.leader_status = {x:{'nextIndex':self.log.commitIndex + 1,  # TODO: review: could it be self.log.index ?
+        self.leader_status = {x:{'nextIndex':self.log.commitIndex,  # TODO: review:  could it be self.log.index ? +1?
                                    'matchIndex': 0} for x in self.cluster}
+
         self.counter = {self.log.commitIndex: len(self.cluster)}
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
         self.send_append_entries()
@@ -164,40 +165,20 @@ class Leader(State):
         self.append_timer.cancel()
 
     def send_append_entries(self):
-        self.restart_append_timer()
-        # entries = [{'key': random.randint(1,10), 'value': random.randint(20,30),
-        #             'action': 'change'}] # TODO: debug
-        # entries = list(map(lambda x:{'term': self.persist['currentTerm'],
-        #                              'data': x}, entries)) # TODO: debug
-        # logger.debug('Broadcasting append_entries: {} entries'.format(len(entries)))
-
-        message = {'type': 'append_entries', 'entries':entries,
-                   'term': self.persist['currentTerm'],
-                   'leaderCommit': self.log.commitIndex,
-                   'leaderId': self.volatile['Id'],
-                   'prevLogIndex': self.log.index,
-                   'prevLogTerm': self.log.term}
-        self.orchestrator.broadcast_peers(message)
-        # self.log.commitIndex = self.log.index #  TODO: just for debug, RMOVE!
-
-        # self.log.append_entries(entries, self.log.index)
-        # logger.debug('Log length is now {}'.format((len(self.log.log))))
-
-
-        for peer in self.leader_status:
+        for peer_id in self.cluster:
+            if peer_id == self.volatile['Id']:
+                continue
+            next_index = self.leader_status[peer_id]['nextIndex']
+            # entries = [self.log[next_index]] if self.log.index else []
+            entries = self.log[next_index:]
             message = {'type': 'append_entries', 'entries':entries,
                        'term': self.persist['currentTerm'],
                        'leaderCommit': self.log.commitIndex,
                        'leaderId': self.volatile['Id'],
-                       'prevLogIndex': self.log.index,
-                       'prevLogTerm': self.log.term}
-
-
-
-
-
-
-
+                       'prevLogIndex': max(next_index - 1, 0),
+                       'prevLogTerm': self.log[next_index - 1]['term'] if self.log.index else 0}
+            print('sending to', peer_id)
+            self.orchestrator.send_peer(peer_id, message)
 
         timeout = random.randrange(1,4)
         timeout = timeout * 10 ** (-1 if self.volatile['debug'] else -2)
@@ -209,21 +190,26 @@ class Leader(State):
             self.leader_status[peer_id]['matchIndex'] =\
                 self.leader_status[peer_id]['nextIndex']
 
-            self.counter[self.leader_status[peer_id]['nextIndex']] -=1
-            self.leader_status[peer_id]['nextIndex'] += 1
-            self.counter[self.leader_status[peer_id]['nextIndex']] +=1
+            self.counter[self.leader_status[peer_id]['nextIndex']] -= 1
+
+            self.leader_status[peer_id]['nextIndex'] = \
+                min(self.log.index, self.leader_status[peer_id]['nextIndex'] + 1)
+            if self.leader_status[peer_id]['nextIndex'] not in self.counter:
+                self.counter[self.leader_status[peer_id]['nextIndex']] = 0
+
+            self.counter[self.leader_status[peer_id]['nextIndex']] += 1
 
             count = 0
             for category in reversed(sorted(self.counter)):
                 count += self.counter[category]
                 if count / len(self.cluster) > 0.5:
                     self.log.commit(category)
+                    logger.debug('Advancing commit to {}'.format(category))
                     break
         else:
             logger.warning('Peer {} refused entry with index {}'.format(\
                 peer_id, self.leader_status[peer_id]['nextIndex']))
             self.leader_status[peer_id]['nextIndex'] -= 1
-
 
     def handle_client_append(self, transport, message):
         pass  # TODO
