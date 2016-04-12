@@ -1,5 +1,6 @@
 import asyncio
 import random
+from collections import Counter
 from .persistence import PersistentDict, LogDict
 from .logger import logger
 from .config import fetch_config
@@ -101,7 +102,6 @@ class Follower(State):
         self.restart_election_timer()
 
         term_is_current = message['term'] >= self.persist['currentTerm']
-        print(message['prevLogIndex'])
         prev_log_term_match = self.log.index >= message['prevLogIndex'] and\
             (message['prevLogIndex'] == 0 or\
             self.log[message['prevLogIndex']]['term'] == message['prevLogTerm'])
@@ -111,7 +111,7 @@ class Follower(State):
             self.log.append_entries(message['entries'], message['prevLogIndex'])
             self.volatile['leaderId'] = message['leaderId']
             self.log.commit(message['leaderCommit'])
-            logger.debug('Log length is now {}'.format((len(self.log.log))))
+            logger.debug('Last index is now {}'.format((self.log.index)))
         else:
             logger.warning('Couldnt append entries. cause: {}'.format('term\
                 mismatch' if not term_is_current else 'prev log term mismatch'))
@@ -154,10 +154,8 @@ class Leader(State):
     def __init__(self, old_state=None, orchestrator=None, config=None):
         super().__init__(old_state, orchestrator, config)
         self.cluster = fetch_config()['cluster']
-        self.leader_status = {x:{'nextIndex':self.log.commitIndex,  # TODO: review:  could it be self.log.index ? +1?
-                                   'matchIndex': 0} for x in self.cluster}
+        self.nextIndex = {x: self.log.commitIndex for x in self.cluster}
 
-        self.counter = {self.log.commitIndex: len(self.cluster)}
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
         self.send_append_entries()
 
@@ -168,16 +166,17 @@ class Leader(State):
         for peer_id in self.cluster:
             if peer_id == self.volatile['Id']:
                 continue
-            next_index = self.leader_status[peer_id]['nextIndex']
-            # entries = [self.log[next_index]] if self.log.index else []
-            entries = self.log[next_index:]
+
+            entries = self.log[self.nextIndex[peer_id]:]
             message = {'type': 'append_entries', 'entries':entries,
                        'term': self.persist['currentTerm'],
                        'leaderCommit': self.log.commitIndex,
                        'leaderId': self.volatile['Id'],
-                       'prevLogIndex': max(next_index - 1, 0),
-                       'prevLogTerm': self.log[next_index - 1]['term'] if self.log.index else 0}
-            print('sending to', peer_id)
+                       'prevLogIndex': max(self.nextIndex[peer_id] - 1, 0),
+                       'prevLogTerm': self.log[self.nextIndex[peer_id] - 1]['term'] if self.log.index else 0}
+
+            logger.debug('Sending entry with index {} to {}'\
+                .format(self.nextIndex[peer_id], peer_id))
             self.orchestrator.send_peer(peer_id, message)
 
         timeout = random.randrange(1,4)
@@ -187,29 +186,20 @@ class Leader(State):
 
     def handle_response_append(self, peer_id, message):
         if message['success']:
-            self.leader_status[peer_id]['matchIndex'] =\
-                self.leader_status[peer_id]['nextIndex']
+            self.nextIndex[peer_id] = \
+                min(self.log.index, self.nextIndex[peer_id] + 1)
 
-            self.counter[self.leader_status[peer_id]['nextIndex']] -= 1
-
-            self.leader_status[peer_id]['nextIndex'] = \
-                min(self.log.index, self.leader_status[peer_id]['nextIndex'] + 1)
-            if self.leader_status[peer_id]['nextIndex'] not in self.counter:
-                self.counter[self.leader_status[peer_id]['nextIndex']] = 0
-
-            self.counter[self.leader_status[peer_id]['nextIndex']] += 1
-
+            index_counter = Counter(self.nextIndex.values())
             count = 0
-            for category in reversed(sorted(self.counter)):
-                count += self.counter[category]
+            for category in reversed(sorted(index_counter)):
+                count += index_counter[category]
                 if count / len(self.cluster) > 0.5:
                     self.log.commit(category)
-                    logger.debug('Advancing commit to {}'.format(category))
                     break
         else:
             logger.warning('Peer {} refused entry with index {}'.format(\
-                peer_id, self.leader_status[peer_id]['nextIndex']))
-            self.leader_status[peer_id]['nextIndex'] -= 1
+                peer_id, self.nextIndex[peer_id]))
+            self.nextIndex[peer_id] -= 1
 
     def handle_client_append(self, transport, message):
         pass  # TODO

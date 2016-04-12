@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+from .logger import logger
 
 class PersistentDict(dict):
     def __init__(self, filepath = None, model = None):
@@ -72,6 +73,7 @@ class LogDict:
     def commit(self, leaderCommit):
         ## TODO: what if  leaderCommit > self.compacted_index?
         if leaderCommit > self.commitIndex:
+            logger.debug('Advancing commit to {}'.format(leaderCommit))
             self.commitIndex = min(leaderCommit, self.index)
             self.state_machine.apply(self.log[self.lastApplied:self.commitIndex])
             self.lastApplied = self.commitIndex
