@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from datetime import datetime
-from .config import fetch_config
+from .config import config
 
 
 def tick():
@@ -9,7 +9,6 @@ def tick():
     loop = asyncio.get_event_loop()
     loop.call_later(1, tick)
 
-config = fetch_config()
 if config['debug']:
     formatter_patten = '%(message)s'
     logLevel = logging.DEBUG

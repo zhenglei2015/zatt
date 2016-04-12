@@ -3,7 +3,7 @@ import random
 from collections import Counter
 from .persistence import PersistentDict, LogDict
 from .logger import logger
-from .config import fetch_config
+from .config import conig
 
 class State:
     def __init__(self, old_state=None, orchestrator=None, config=None):
@@ -153,8 +153,7 @@ class Candidate(Follower):
 class Leader(State):
     def __init__(self, old_state=None, orchestrator=None, config=None):
         super().__init__(old_state, orchestrator, config)
-        self.cluster = fetch_config()['cluster']
-        self.nextIndex = {x: self.log.commitIndex for x in self.cluster}
+        self.nextIndex = {x: self.log.commitIndex for x in config['cluster']}
 
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
         self.send_append_entries()
@@ -163,7 +162,7 @@ class Leader(State):
         self.append_timer.cancel()
 
     def send_append_entries(self):
-        for peer_id in self.cluster:
+        for peer_id in config['cluster']:
             if peer_id == self.volatile['Id']:
                 continue
 
@@ -193,7 +192,7 @@ class Leader(State):
             count = 0
             for category in reversed(sorted(index_counter)):
                 count += index_counter[category]
-                if count / len(self.cluster) > 0.5:
+                if count / len(config['cluster']) > 0.5:
                     self.log.commit(category)
                     break
         else:

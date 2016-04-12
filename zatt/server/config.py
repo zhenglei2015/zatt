@@ -23,44 +23,43 @@ parser.add_argument('--node-port', action='append', default=[],
                     help='Remote node port')
 parser.add_argument('--debug', action='store_true', help='Enable debug mode')
 
-def fetch_config():
-    args = parser.parse_args()
-    if len(args.node_id) != len(args.node_port)\
-    or len(args.node_id) != len(args.node_address):
-        print('There should be the same number of:node-id, node-address,',
-              'node-port')
-        sys.exit(1)
-    if args.path_config is not None and not os.path.isfile(args.path_config):
-        print('Config file not found')
-        sys.exit(1)
+args = parser.parse_args()
+if len(args.node_id) != len(args.node_port)\
+or len(args.node_id) != len(args.node_address):
+    print('There should be the same number of:node-id, node-address,',
+          'node-port')
+    sys.exit(1)
+if args.path_config is not None and not os.path.isfile(args.path_config):
+    print('Config file not found')
+    sys.exit(1)
 
-    config = {'id':int(args.id), 'cluster': {}, 'debug':args.debug}
+config = {'id':int(args.id), 'cluster': {}, 'debug':args.debug}
 
-    path = args.path_config if args.path_config else 'zatt.conf'
-    if os.path.isfile(path):
-        with open(path, 'r') as f:
-            config.update(json.loads(f.read()))
+path = args.path_config if args.path_config else 'zatt.conf'
+if os.path.isfile(path):
+    with open(path, 'r') as f:
+        config.update(json.loads(f.read()))
 
-    if 'storage' not in config:
-        config['storage'] = 'zatt.persist'
+if 'storage' not in config:
+    config['storage'] = 'zatt.persist'
 
-    if args.path_storage:
-        config['storage'] = args.path_storage
+if args.path_storage:
+    config['storage'] = args.path_storage
 
-    for x in zip(args.node_id, args.node_address, args.node_port):
-        config['cluster'][x[0]] = x[1:3]
+for x in zip(args.node_id, args.node_address, args.node_port):
+    config['cluster'][x[0]] = x[1:3]
 
-    if args.address:
-        config['cluster'][config['id']][0] = args.address
+if args.address:
+    config['cluster'][config['id']][0] = args.address
 
-    if args.port:
-        config['cluster'][config['id']][1] = args.port
+if args.port:
+    config['cluster'][config['id']][1] = args.port
 
-    cluster = config['cluster']
-    config['cluster'] = {}
-    config['cluster'] = {int(k):(v[0], int(v[1])) for (k,v) in cluster.items()}
+cluster = config['cluster']
+config['cluster'] = {}
+config['cluster'] = {int(k):(v[0], int(v[1])) for (k,v) in cluster.items()}
 
-    if config['id'] not in config['cluster']:
-        config['cluster'][config['id']] = ['127.0.0.1', '5254']
+if config['id'] not in config['cluster']:
+    config['cluster'][config['id']] = ['127.0.0.1', '5254']
 
-    return config
+__all__ = ['config']
