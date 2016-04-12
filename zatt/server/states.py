@@ -31,7 +31,7 @@ class State:
                 self.orchestrator.state.data_received_peer(peer_id, message)
                 return
         else:
-            method = getattr(self, 'handle_' + message['type'], None)
+            method = getattr(self, 'handle_peer_' + message['type'], None)
             if method:
                 method(peer_id, message)
             else:
@@ -39,7 +39,7 @@ class State:
                                                                       message))
 
     def data_received_client(self, transport, message):
-        methods = {'Append': self.handle_client_append,
+        methods = {'Append': self.handle_peer_client_append,
                    'Get': self.handle_client_get}
 
         if message['type'] in methods:
@@ -79,7 +79,7 @@ class Follower(State):
             self.orchestrator.change_state, Candidate)
         logger.debug('Election timer restarted: {}s'.format(timeout))
 
-    def handle_request_vote(self, peer_id, message):
+    def handle_peer_request_vote(self, peer_id, message):
         self.restart_election_timer()
         term_is_current =  message['term'] >= self.persist['currentTerm']
         can_vote = self.persist['votedFor'] in [None, message['candidateId']]
@@ -96,7 +96,7 @@ class Follower(State):
                    'term': self.persist['currentTerm']}
         self.orchestrator.send_peer(peer_id, response)
 
-    def handle_append_entries(self, peer_id, message):
+    def handle_peer_append_entries(self, peer_id, message):
         self.restart_election_timer()
 
         term_is_current = message['term'] >= self.persist['currentTerm']
@@ -137,12 +137,12 @@ class Candidate(Follower):
                    'lastLogTerm': self.log.term}
         self.orchestrator.broadcast_peers(message)
 
-    def handle_append_entries(self, peer_id, message):
+    def handle_peer_append_entries(self, peer_id, message):
         logger.debug('Converting to Follower')
         self.orchestrator.change_state(Follower)
-        self.orchestrator.state.handle_append_entries(peer_id, message)
+        self.orchestrator.state.handle_peer_append_entries(peer_id, message)
 
-    def handle_response_vote(self, peer_id, message):
+    def handle_peer_response_vote(self, peer_id, message):
         self.votes_count += message['voteGranted']
         logger.info('Vote count: {}'.format(self.votes_count))
         if self.votes_count > len(self.config['cluster']) / 2:
@@ -179,7 +179,7 @@ class Leader(State):
         loop = asyncio.get_event_loop()
         self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
-    def handle_response_append(self, peer_id, message):
+    def handle_peer_response_append(self, peer_id, message):
         if message['success']:
             self.nextIndex[peer_id] = \
                 min(self.log.index, self.nextIndex[peer_id] + 1)
