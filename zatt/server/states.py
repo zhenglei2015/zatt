@@ -38,23 +38,21 @@ class State:
                 logger.info('Unrecognized message from {}: {}'.format(peer_id,
                                                                       message))
 
-    def data_received_client(self, transport, message):
-        methods = {'Append': self.handle_peer_client_append,
-                   'Get': self.handle_client_get}
-
-        if message['type'] in methods:
-            methods[message['type']](transport, message)
-            logger.info('Received message: ' + message['type'])
+    def data_received_client(self, protocol, message):
+        method = getattr(self, 'handle_client_' + message['type'], None)
+        if method:
+            method(protocol, message)
         else:
-            logger.info('Received unrecognized message from client')
+            logger.info('Unrecognized message from {}: {}'\
+                .format(protocol.transport.get_extra_info('peername'), message))
 
-    def handle_client_append(self, transport, message):
-        response = {'type': 'redirect', 'leaderId': self.volatile['leaderId']}
-        self.orchestrator.send(transport, response)
-        logger.info('Redirect client {}:{} to leader: '.format(
-                     *transport.get_extra_info('peername')))
+    def handle_client_append(self, protocol, message):
+        message = {'type': 'redirect', 'leaderId': self.volatile['leaderId']}
+        protocol.send(message)
+        logger.info('Redirect client {}:{} to leader'.format(
+                     *protocol.transport.get_extra_info('peername')))
 
-    def handle_client_get(self, transport, message):
+    def handle_client_get(self, protocol, message):
         pass  # TODO every server should be able to respond
 
 
@@ -197,5 +195,5 @@ class Leader(State):
                 peer_id, self.nextIndex[peer_id]))
             self.nextIndex[peer_id] -= 1
 
-    def handle_client_append(self, transport, message):
-        pass  # TODO
+    def handle_client_append(self, protocol, message):
+        pass

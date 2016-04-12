@@ -61,8 +61,18 @@ class ClientProtocol(asyncio.Protocol):
         self.orchestrator = orchestrator
 
     def connection_made(self, transport):
+        logger.debug('Established connection with client {}:{}'\
+            .format(*transport.get_extra_info('peername')))
         self.transport = transport
 
     def data_received(self, data):
         message = json.loads(data.decode())
-        self.orchestrator.data_received_client(self.transport, message)
+        self.orchestrator.data_received_client(self, message)
+
+    def connection_lost(self, exc):
+        logger.debug('Closed connection with client {}:{}'\
+            .format(*self.transport.get_extra_info('peername')))
+
+    def send(self, message):
+        self.transport.write(json.dumps(message).encode())
+        self.transport.close()

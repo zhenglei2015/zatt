@@ -14,7 +14,8 @@ def run():
     transport, _ = loop.run_until_complete(coro)
     orchestrator.peer_transport = transport
 
-    coro = loop.create_server(ClientProtocol, *config['cluster'][config['id']])
+    coro = loop.create_server(lambda: ClientProtocol(orchestrator),
+                              *config['cluster'][config['id']])
     server = loop.run_until_complete(coro)
 
     logger.info('Serving on {}'.format(config['cluster'][config['id']]))
