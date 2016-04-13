@@ -98,9 +98,8 @@ class Follower(State):
         self.restart_election_timer()
 
         term_is_current = message['term'] >= self.persist['currentTerm']
-        prev_log_term_match = self.log.index >= message['prevLogIndex'] and\
-            (message['prevLogIndex'] == 0 or\
-            self.log[message['prevLogIndex']]['term'] == message['prevLogTerm'])
+        prev_log_term_match = message['prevLogTerm'] is None or\
+            self.log[message['prevLogIndex']]['term'] == message['prevLogTerm']
         success = term_is_current and prev_log_term_match
 
         if success:
@@ -149,9 +148,8 @@ class Candidate(Follower):
 class Leader(State):
     def __init__(self, config, old_state=None, orchestrator=None):
         super().__init__(config, old_state, orchestrator)
-        self.nextIndex = {x: self.log.commitIndex for x in self.config['cluster']}
-
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
+        self.nextIndex = {x: self.log.commitIndex+1 for x in self.config['cluster']}
         self.send_append_entries()
 
     def teardown(self):
@@ -164,9 +162,9 @@ class Leader(State):
                        'term': self.persist['currentTerm'],
                        'leaderCommit': self.log.commitIndex,
                        'leaderId': self.volatile['Id'],
-                       'prevLogIndex': max(self.nextIndex[peer_id] - 1, 0),
-                       'prevLogTerm': self.log[self.nextIndex[peer_id] - 1]['term'] if self.log.index else 0}
+                       'prevLogIndex': self.nextIndex[peer_id] - 1}
 
+            message.update({'prevLogTerm': self.log[message['prevLogIndex']]['term'] if self.log.index > 0 else None})
             logger.debug('Sending {} entries to {}. Start index {}'\
                 .format(len(message['entries']), peer_id,
                         self.nextIndex[peer_id]))
@@ -179,9 +177,11 @@ class Leader(State):
 
     def handle_peer_response_append(self, peer_id, message):
         if message['success']:
-            self.nextIndex[peer_id] = \
-                min(self.log.index, self.nextIndex[peer_id] + 1)
+            if self.log.index != -1:
+                self.nextIndex[peer_id] = min(self.log.index, self.nextIndex[peer_id] + 1)
+            # self.nextIndex[peer_id] = 0 if self.log.index == -1 else self.nextIndex[peer_id] + 1
 
+            self.nextIndex[self.volatile['Id']] = self.log.index
             index_counter = Counter(self.nextIndex.values())
             index_counter = OrderedDict(reversed(sorted(index_counter.items())))
             total = 0
@@ -196,4 +196,6 @@ class Leader(State):
             self.nextIndex[peer_id] -= 1
 
     def handle_client_append(self, protocol, message):
-        pass
+        capsule = {'term': self.persist['currentTerm'], 'data': message['data']}
+        self.log.append_entries([capsule], self.log.index)
+        protocol.send('OK')

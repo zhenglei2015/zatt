@@ -35,6 +35,7 @@ class LogDictMachine:
                 self.state_machine[item['key']] = item['value']
             elif item['action'] == 'delete':
                 del self.state_machine[item['key']]
+        print(self.state_machine)
 
 
 class LogDict:
@@ -43,13 +44,13 @@ class LogDict:
         self.compacted_index = 0
         self.compacted_term = 0
         self.log = []
-        self.commitIndex = 0
+        self.commitIndex = -1
         self.lastApplied = 0
         self.state_machine = LogDictMachine(state_machine=self.compacted_log)
 
     @property
     def index(self):
-        return max(self.compacted_index + len(self.log) - 1, 0)
+        return self.compacted_index + len(self.log) - 1
 
     @property
     def term(self):
@@ -75,7 +76,7 @@ class LogDict:
         if leaderCommit > self.commitIndex:
             logger.debug('Advancing commit to {}'.format(leaderCommit))
             self.commitIndex = min(leaderCommit, self.index)
-            self.state_machine.apply(self.log[self.lastApplied:self.commitIndex])
+            self.state_machine.apply(self.log[self.lastApplied:self.commitIndex + 1])
             self.lastApplied = self.commitIndex
             # self.touch_compaction_timer() # TODO: right place?
 
