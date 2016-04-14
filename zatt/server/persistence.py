@@ -1,35 +1,53 @@
 import os
 import json
 import asyncio
+import collections
 from .logger import logger
 from .config import config
 
-class PersistentDict(dict):
+
+class PersistentDict(collections.MutableMapping):
     def __init__(self, filepath = None, model = None):
-        dict.__init__(self)
+        self.store = dict()
         if os.path.isfile(filepath):
             with open(filepath, 'r') as f:
-                for k,v in json.loads(f.read()).items():
-                    dict.__setitem__(self, k,v)
-        elif model:
-            for k,v in model.items():
-                dict.__setitem__(self, k,v)
+                self.store =  json.loads(f.read())
+        elif type(model) == dict:
+            self.store = model
         self.filepath = filepath
+
+    def __getitem__(self, key):
+        return self.store[self.__keytransform__(key)]
+
+    def __setitem__(self, key, value):
+        self.store[self.__keytransform__(key)] = value
+        self.persist()
+
+    def __delitem__(self, key):
+        del self.store[self.__keytransform__(key)]
+
+    def __iter__(self):
+        return iter(self.store)
+
+    def __len__(self):
+        return len(self.store)
+
+    def __keytransform__(self, key):
+        return key
 
     def persist(self):
         with open(self.filepath, 'w+') as f:
-            f.write(json.dumps(self))
+            f.write(json.dumps(self.store))
 
-    def __setitem__(self, key, val):
-        dict.__setitem__(self, key, val)
+    def replace(self, data):
+        self.store = data
         self.persist()
+
 
 
 class LogDictMachine:
     def __init__(self, state_machine={}):
-        self.state_machine = state_machine
-    # def __init__(self):
-    #     self.state_machine = PersistentDict(os.path.join(config['storage'], 'log'), {})
+        self.state_machine = state_machine.store.copy()
 
     def apply(self, items):
         for item in items:
@@ -40,20 +58,18 @@ class LogDictMachine:
                 del self.state_machine[item['key']]
 
 
-
 class LogDict:
     def __init__(self):
-        self.compacted_log = {}
+        self.compacted_log = PersistentDict(os.path.join(config['storage'], 'log'), {})
         self.compacted_count = 0 # compacted items count, or c_index + 1!
         self.compacted_term = None  # term of last compacted item
         self.log = []
         self.commitIndex = -1
         self.lastApplied = -1
-        self.state_machine = LogDictMachine()
-        # self.state_machine = LogDictMachine(state_machine=self.compacted_log)
+        self.state_machine = LogDictMachine(state_machine=self.compacted_log)
 
     @property
-    def compacted_index(self):
+    def compacted_index(self):  # TODO: maybe remove?
         return self.compacted_count - 1
 
     @property
@@ -99,12 +115,12 @@ class LogDict:
 
     def compact(self):
         del self.compaction_timer
-        if self.commitIndex - self.compacted_count < 1:
+        if self.commitIndex - self.compacted_count < 3:
             return
         logger.debug('Compaction started')
-        self.compacted_log = self.state_machine.state_machine
+        self.compacted_log.replace(self.state_machine.state_machine)
         self.compacted_term = self.term(self.lastApplied)
         self.log = self[self.lastApplied + 1:]
         self.compacted_count = self.lastApplied + 1
-        print('COMPACT:', self.compacted_log)
+        print('COMPACT:', self.compacted_log.store)
         print('LOG:', self.log)

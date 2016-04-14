@@ -162,13 +162,13 @@ class Leader(State):
             if peer_id == self.volatile['Id']:
                 continue
             message = {'type': 'append_entries',
-                       'entries':self.log[self.nextIndex[peer_id]:],
+                       'entries':self.log[self.nextIndex[peer_id]:self.nextIndex[peer_id] + 2],
                        'term': self.persist['currentTerm'],
                        'leaderCommit': self.log.commitIndex,
                        'leaderId': self.volatile['Id'],
                        'prevLogIndex': self.nextIndex[peer_id] - 1}
 
-            message.update({'prevLogTerm': self.log.term(message['prevLogIndex']) if self.log.index > 0 else None})
+            message.update({'prevLogTerm': self.log.term(message['prevLogIndex']) if message['prevLogIndex'] != -1 else None})
 
             logger.debug('Sending {} entries to {}. Start index {}'\
                 .format(len(message['entries']), peer_id,
