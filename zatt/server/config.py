@@ -46,6 +46,9 @@ if 'storage' not in config:
 if args.path_storage:
     config['storage'] = args.path_storage
 
+if not os.path.isdir(config['storage']):
+    os.mkdir(config['storage'])
+
 for x in zip(args.node_id, args.node_address, args.node_port):
     config['cluster'][x[0]] = x[1:3]
 

@@ -1,5 +1,6 @@
 import asyncio
 import random
+import os
 from collections import Counter, OrderedDict
 from .persistence import PersistentDict, LogDict
 from .logger import logger
@@ -15,10 +16,10 @@ class State:
             self.log = old_state.log
         elif orchestrator:
             self.orchestrator = orchestrator
-            self.persist = PersistentDict(config['storage'],
+            self.persist = PersistentDict(os.path.join(config['storage'], 'state'),
                                           {'votedFor': None, 'currentTerm': 0})
             self.volatile = {'leaderId': None, 'Id': config['id']}
-            self.log = LogDict(config['storage'])
+            self.log = LogDict()
 
     def data_received_peer(self, peer_id, message):
         logger.debug('Received {} from {}'.format(message['type'], peer_id))
@@ -99,19 +100,20 @@ class Follower(State):
 
         term_is_current = message['term'] >= self.persist['currentTerm']
         prev_log_term_match = message['prevLogTerm'] is None or\
-            self.log[message['prevLogIndex']]['term'] == message['prevLogTerm']
+            self.log.term(message['prevLogIndex']) == message['prevLogTerm']
         success = term_is_current and prev_log_term_match
 
         if success:
             self.log.append_entries(message['entries'], message['prevLogIndex'])
             self.volatile['leaderId'] = message['leaderId']
             self.log.commit(message['leaderCommit'])
+
             logger.debug('Last index is now {}'.format((self.log.index)))
         else:
             logger.warning('Couldnt append entries. cause: {}'.format('term\
                 mismatch' if not term_is_current else 'prev log term mismatch'))
 
-        response = {'success': success, 'term': self.persist['currentTerm'],
+        response = {'next_index':self.log.index + 1, 'term': self.persist['currentTerm'],
                    'type': 'response_append'}
         self.orchestrator.send_peer(peer_id, response)
 
@@ -131,7 +133,7 @@ class Candidate(Follower):
         message = {'type': 'request_vote', 'term': self.persist['currentTerm'],
                    'candidateId': self.volatile['Id'],
                    'lastLogIndex': self.log.index,
-                   'lastLogTerm': self.log.term}
+                   'lastLogTerm': self.log.term()}
         self.orchestrator.broadcast_peers(message)
 
     def handle_peer_append_entries(self, peer_id, message):
@@ -149,7 +151,7 @@ class Leader(State):
     def __init__(self, config, old_state=None, orchestrator=None):
         super().__init__(config, old_state, orchestrator)
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
-        self.nextIndex = {x: self.log.commitIndex+1 for x in self.config['cluster']}
+        self.nextIndex = {x: self.log.commitIndex + 1 for x in self.config['cluster']}
         self.send_append_entries()
 
     def teardown(self):
@@ -157,6 +159,8 @@ class Leader(State):
 
     def send_append_entries(self):
         for peer_id in config['cluster']:
+            if peer_id == self.volatile['Id']:
+                continue
             message = {'type': 'append_entries',
                        'entries':self.log[self.nextIndex[peer_id]:],
                        'term': self.persist['currentTerm'],
@@ -164,7 +168,7 @@ class Leader(State):
                        'leaderId': self.volatile['Id'],
                        'prevLogIndex': self.nextIndex[peer_id] - 1}
 
-            message.update({'prevLogTerm': self.log[message['prevLogIndex']]['term'] if self.log.index > 0 else None})
+            message.update({'prevLogTerm': self.log.term(message['prevLogIndex']) if self.log.index > 0 else None})
             logger.debug('Sending {} entries to {}. Start index {}'\
                 .format(len(message['entries']), peer_id,
                         self.nextIndex[peer_id]))
@@ -176,24 +180,18 @@ class Leader(State):
         self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
     def handle_peer_response_append(self, peer_id, message):
-        if message['success']:
-            if self.log.index != -1:
-                self.nextIndex[peer_id] = min(self.log.index, self.nextIndex[peer_id] + 1)
-            # self.nextIndex[peer_id] = 0 if self.log.index == -1 else self.nextIndex[peer_id] + 1
+        self.nextIndex[peer_id] = message['next_index']
+        # self.nextIndex[peer_id] = 0 if self.log.index == -1 else self.nextIndex[peer_id] + 1
 
-            self.nextIndex[self.volatile['Id']] = self.log.index
-            index_counter = Counter(self.nextIndex.values())
-            index_counter = OrderedDict(reversed(sorted(index_counter.items())))
-            total = 0
-            for index, count in index_counter.items():
-                total += count
-                if total / len(config['cluster']) > 0.5:
-                    self.log.commit(index)
-                    break
-        else:
-            logger.warning('Peer {} refused entry with index {}'.format(\
-                peer_id, self.nextIndex[peer_id]))
-            self.nextIndex[peer_id] -= 1
+        self.nextIndex[self.volatile['Id']] = self.log.index
+        index_counter = Counter(self.nextIndex.values())
+        index_counter = OrderedDict(reversed(sorted(index_counter.items())))
+        total = 0
+        for index, count in index_counter.items():
+            total += count
+            if total / len(config['cluster']) > 0.5:
+                self.log.commit(index)
+                break
 
     def handle_client_append(self, protocol, message):
         capsule = {'term': self.persist['currentTerm'], 'data': message['data']}
