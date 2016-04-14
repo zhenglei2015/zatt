@@ -48,14 +48,13 @@ class State:
                 .format(protocol.transport.get_extra_info('peername'), message))
 
     def handle_client_append(self, protocol, message):
-        message = {'type': 'redirect', 'leaderId': self.volatile['leaderId']}
+        message = {'type': 'redirect', 'leader': self.config['cluster'][self.volatile['leaderId']]}
         protocol.send(message)
         logger.info('Redirect client {}:{} to leader'.format(
                      *protocol.transport.get_extra_info('peername')))
 
     def handle_client_get(self, protocol, message):
-        pass  # TODO every server should be able to respond
-
+        protocol.send(self.log.state_machine.state_machine)
 
 class Follower(State):
     def __init__(self, config, old_state=None, orchestrator=None):
@@ -196,4 +195,4 @@ class Leader(State):
     def handle_client_append(self, protocol, message):
         capsule = {'term': self.persist['currentTerm'], 'data': message['data']}
         self.log.append_entries([capsule], self.log.index)
-        protocol.send('OK')
+        protocol.send({'type': 'result', 'success': True})
