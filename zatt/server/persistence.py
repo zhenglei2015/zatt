@@ -38,9 +38,7 @@ class LogDictMachine:
                 self.state_machine[item['key']] = item['value']
             elif item['action'] == 'delete':
                 del self.state_machine[item['key']]
-        print('STATE MACHINE:', self.state_machine)
-        print('LOG:', self.log)
-        
+
 
 
 class LogDict:
@@ -71,7 +69,10 @@ class LogDict:
     def __getitem__(self, index):
         #  TODO: what if index < self.compacted_index ?
         if type(index) is slice:
-            return self.log[index]  # TODO: review
+            start = index.start - self.compacted_count if index.start else None
+            stop = index.stop - self.compacted_count if index.stop else None
+            adjusted_index = slice(start, stop, index.step)
+            return self.log[adjusted_index]  # TODO: review
         elif type(index) is int:
             return self.log[index - self.compacted_count]
 
@@ -85,7 +86,9 @@ class LogDict:
         if leaderCommit > self.commitIndex:
             self.commitIndex = min(leaderCommit, self.index + 1)
             logger.debug('Advancing commit to {}'.format(self.commitIndex))
-            self.state_machine.apply(self.log[self.lastApplied + 1 - self.compacted_count:self.commitIndex + 1 - self.compacted_count])
+            self.state_machine.apply(self[self.lastApplied + 1:self.commitIndex + 1])
+            print('STATE MACHINE:', self.state_machine.state_machine)
+            print('LOG:', self.log)
             self.lastApplied = self.commitIndex
             self.touch_compaction_timer() # TODO: right place?
 
@@ -101,8 +104,7 @@ class LogDict:
         logger.debug('Compaction started')
         self.compacted_log = self.state_machine.state_machine
         self.compacted_term = self.term(self.lastApplied)
-        # del self[:self.lastApplied - self.compacted_index]
-        self.log = self[self.lastApplied - self.compacted_index:]
+        self.log = self[self.lastApplied + 1:]
         self.compacted_count = self.lastApplied + 1
         print('COMPACT:', self.compacted_log)
         print('LOG:', self.log)

@@ -162,7 +162,7 @@ class Leader(State):
             if peer_id == self.volatile['Id']:
                 continue
             message = {'type': 'append_entries',
-                       'entries':self.log[self.nextIndex[peer_id] - self.log.compacted_count:],
+                       'entries':self.log[self.nextIndex[peer_id]:],
                        'term': self.persist['currentTerm'],
                        'leaderCommit': self.log.commitIndex,
                        'leaderId': self.volatile['Id'],
