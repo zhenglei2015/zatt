@@ -38,7 +38,9 @@ class LogDictMachine:
                 self.state_machine[item['key']] = item['value']
             elif item['action'] == 'delete':
                 del self.state_machine[item['key']]
-        print(self.state_machine)
+        print('STATE MACHINE:', self.state_machine)
+        print('LOG:', self.log)
+        
 
 
 class LogDict:
@@ -48,7 +50,7 @@ class LogDict:
         self.compacted_term = None  # term of last compacted item
         self.log = []
         self.commitIndex = -1
-        self.lastApplied = 0
+        self.lastApplied = -1
         self.state_machine = LogDictMachine()
         # self.state_machine = LogDictMachine(state_machine=self.compacted_log)
 
@@ -81,9 +83,9 @@ class LogDict:
     def commit(self, leaderCommit):
         ## TODO: what if  leaderCommit > self.compacted_index?
         if leaderCommit > self.commitIndex:
-            self.commitIndex = min(leaderCommit, self.index)
+            self.commitIndex = min(leaderCommit, self.index + 1)
             logger.debug('Advancing commit to {}'.format(self.commitIndex))
-            self.state_machine.apply(self.log[self.lastApplied:self.commitIndex + 1])
+            self.state_machine.apply(self.log[self.lastApplied + 1 - self.compacted_count:self.commitIndex + 1 - self.compacted_count])
             self.lastApplied = self.commitIndex
             self.touch_compaction_timer() # TODO: right place?
 
@@ -102,3 +104,5 @@ class LogDict:
         # del self[:self.lastApplied - self.compacted_index]
         self.log = self[self.lastApplied - self.compacted_index:]
         self.compacted_count = self.lastApplied + 1
+        print('COMPACT:', self.compacted_log)
+        print('LOG:', self.log)
