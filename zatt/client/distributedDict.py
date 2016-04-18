@@ -14,6 +14,9 @@ class DistributedDict(collections.MutableMapping):
         return self.store[self.__keytransform__(key)]
 
     def __setitem__(self, key, val):
+        if type(key) != str:
+            print('Json allows only for key of type "str".')
+            return
         self._get()
         self.store[self.__keytransform__(key)] = val
         payload = {'type': 'append',
