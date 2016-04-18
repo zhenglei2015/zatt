@@ -152,6 +152,7 @@ class Leader(State):
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
         self.nextIndex = {x: self.log.commitIndex + 1 for x in self.config['cluster']}
         self.send_append_entries()
+        self.waiting_clients = {}
 
     def teardown(self):
         self.append_timer.cancel()
@@ -190,9 +191,24 @@ class Leader(State):
             total += count
             if total / len(config['cluster']) > 0.5:
                 self.log.commit(index)
+                self.send_client_append_response()
                 break
 
     def handle_client_append(self, protocol, message):
         capsule = {'term': self.persist['currentTerm'], 'data': message['data']}
         self.log.append_entries([capsule], self.log.index)
-        protocol.send({'type': 'result', 'success': True})
+        if self.log.index in self.waiting_clients:
+            self.waiting_clients[self.log.index].append(protocol)
+        else:
+            self.waiting_clients[self.log.index] = [protocol]
+
+    def send_client_append_response(self):
+        to_delete = []
+        for client_index, clients in self.waiting_clients.items():
+            if client_index >= self.log.commitIndex:
+                for client in clients:
+                    client.send({'type': 'result', 'success': True})
+                    print('sent')
+                to_delete.append(client_index)
+        for index in to_delete:
+            del self.waiting_clients[client_index]
