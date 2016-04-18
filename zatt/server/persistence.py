@@ -60,13 +60,17 @@ class LogDictMachine:
 
 class LogDict:
     def __init__(self):
-        self.compacted_log = PersistentDict(os.path.join(config['storage'], 'log'), {})
+        self.compacted_log = PersistentDict(os.path.join(config['storage'], 'compacted'), {})
         self.compacted_count = 0 # compacted items count, or c_index + 1!
         self.compacted_term = None  # term of last compacted item
         self.log = []
         self.commitIndex = -1
         self.lastApplied = -1
         self.state_machine = LogDictMachine(state_machine=self.compacted_log)
+        if os.path.isfile(os.path.join(config['storage'], 'log')):
+            with open(os.path.isfile(os.path.join(config['storage'], 'log')), 'r') as f:
+                entries = f.readlines()
+                self.log = map(json.loads, entries)
 
     @property
     def compacted_index(self):  # TODO: maybe remove?
@@ -103,10 +107,16 @@ class LogDict:
             self.commitIndex = min(leaderCommit, self.index + 1)
             logger.debug('Advancing commit to {}'.format(self.commitIndex))
             self.state_machine.apply(self[self.lastApplied + 1:self.commitIndex + 1])
+            # self.persist_log()
             print('STATE MACHINE:', self.state_machine.state_machine)
             print('LOG:', self.log)
             self.lastApplied = self.commitIndex
             self.touch_compaction_timer() # TODO: right place?
+
+    def persist_log(self):
+        for entry in self[self.lastApplied + 1:self.commitIndex + 1]:
+            with open(os.path.join(config['storage'], 'log'), 'a+') as f:
+                f.write(json.dumps(payload) + '\n')
 
     def touch_compaction_timer(self):
         if not hasattr(self, 'compaction_timer'):
@@ -122,5 +132,8 @@ class LogDict:
         self.compacted_term = self.term(self.lastApplied)
         self.log = self[self.lastApplied + 1:]
         self.compacted_count = self.lastApplied + 1
+
+        if os.path.isfile(os.path.join(config['storage'], 'log')):
+            os.remove(os.path.join(config['storage'], 'log'))
         print('COMPACT:', self.compacted_log.store)
         print('LOG:', self.log)
