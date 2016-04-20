@@ -44,7 +44,6 @@ class PersistentDict(collections.MutableMapping):
         self.persist()
 
 
-
 class LogDictMachine:
     def __init__(self, state_machine={}):
         self.state_machine = state_machine.store.copy()
@@ -60,17 +59,14 @@ class LogDictMachine:
 
 class LogDict:
     def __init__(self):
-        self.compacted_log = PersistentDict(os.path.join(config['storage'], 'compacted'), {})
-        self.compacted_count = 0 # compacted items count, or c_index + 1!
-        self.compacted_term = None  # term of last compacted item
         self.log = []
+        self.load_log()
         self.commitIndex = -1
         self.lastApplied = -1
+        self.compacted_log = PersistentDict(os.path.join(config['storage'], 'compacted'), {})
+        self.compacted_count = 0  # compacted items count, or last compacted item index + 1
+        self.compacted_term = None  # term of last compacted item
         self.state_machine = LogDictMachine(state_machine=self.compacted_log)
-        if os.path.isfile(os.path.join(config['storage'], 'log')):
-            with open(os.path.isfile(os.path.join(config['storage'], 'log')), 'r') as f:
-                entries = f.readlines()
-                self.log = map(json.loads, entries)
 
     @property
     def compacted_index(self):  # TODO: maybe remove?
@@ -81,7 +77,7 @@ class LogDict:
         return self.compacted_count + len(self.log) - 1
 
     def term(self, index=-1):
-        if not self.log or index < self.compacted_index:  # TODO: review
+        if not self.log or index < self.compacted_index:
             return self.compacted_term
         else:
             return self[index]['term']
@@ -91,8 +87,7 @@ class LogDict:
         if type(index) is slice:
             start = index.start - self.compacted_count if index.start else None
             stop = index.stop - self.compacted_count if index.stop else None
-            adjusted_index = slice(start, stop, index.step)
-            return self.log[adjusted_index]  # TODO: review
+            return self.log[start:stop:index.step]
         elif type(index) is int:
             return self.log[index - self.compacted_count]
 
@@ -102,7 +97,7 @@ class LogDict:
         self.log += entries
 
     def commit(self, leaderCommit):
-        ## TODO: what if  leaderCommit > self.compacted_index?
+        ## TODO: what if  leaderCommit > self.index?
         if leaderCommit > self.commitIndex:
             self.commitIndex = min(leaderCommit, self.index + 1)
             logger.debug('Advancing commit to {}'.format(self.commitIndex))
@@ -137,3 +132,10 @@ class LogDict:
             os.remove(os.path.join(config['storage'], 'log'))
         print('COMPACT:', self.compacted_log.store)
         print('LOG:', self.log)
+
+    def load_log(self):
+        logfile = os.path.join(config['storage'], 'log')
+        if os.path.isfile(logfile):
+            with open(logfile, 'r') as f:
+                entries = f.readlines()
+                self.log = map(json.loads, entries)
