@@ -2,7 +2,7 @@ import asyncio
 import random
 import os
 from collections import Counter, OrderedDict
-from .persistence import PersistentDict, LogDict
+from .persistence import PersistentDict, LogManager
 from .logger import logger
 from .config import config
 
@@ -19,7 +19,7 @@ class State:
             self.persist = PersistentDict(os.path.join(config['storage'], 'state'),
                                           {'votedFor': None, 'currentTerm': 0})
             self.volatile = {'leaderId': None, 'Id': config['id']}
-            self.log = LogDict()
+            self.log = LogManager()
 
     def data_received_peer(self, peer_id, message):
         logger.debug('Received {} from {}'.format(message['type'], peer_id))
@@ -54,7 +54,7 @@ class State:
                      *protocol.transport.get_extra_info('peername')))
 
     def handle_client_get(self, protocol, message):
-        protocol.send(self.log.state_machine.state_machine)
+        protocol.send(self.log.state_machine.data)
 
 class Follower(State):
     def __init__(self, config, old_state=None, orchestrator=None):
@@ -208,7 +208,7 @@ class Leader(State):
             if client_index >= self.log.commitIndex:
                 for client in clients:
                     client.send({'type': 'result', 'success': True})
-                    print('sent')
+                    logger.debug('Sent successful response to client')
                 to_delete.append(client_index)
         for index in to_delete:
             del self.waiting_clients[client_index]

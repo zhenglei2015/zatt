@@ -1,141 +1,158 @@
 import os
 import json
-import asyncio
 import collections
+import asyncio
 from .logger import logger
 from .config import config
 
 
-class PersistentDict(collections.MutableMapping):
-    def __init__(self, filepath = None, model = None):
-        self.store = dict()
-        if os.path.isfile(filepath):
-            with open(filepath, 'r') as f:
-                self.store =  json.loads(f.read())
-        elif type(model) == dict:
-            self.store = model
-        self.filepath = filepath
-
-    def __getitem__(self, key):
-        return self.store[self.__keytransform__(key)]
+class PersistentDict(collections.UserDict):
+    def __init__(self, path=None, data={}):
+        if os.path.isfile(path):
+            with open(path, 'r') as f:
+                data = json.loads(f.read())
+        self.path = path
+        super().__init__(data)
 
     def __setitem__(self, key, value):
-        self.store[self.__keytransform__(key)] = value
+        self.data[self.__keytransform__(key)] = value
         self.persist()
 
     def __delitem__(self, key):
-        del self.store[self.__keytransform__(key)]
-
-    def __iter__(self):
-        return iter(self.store)
-
-    def __len__(self):
-        return len(self.store)
+        del self.data[self.__keytransform__(key)]
+        self.persist()
 
     def __keytransform__(self, key):
         return key
 
     def persist(self):
-        with open(self.filepath, 'w+') as f:
-            f.write(json.dumps(self.store))
-
-    def replace(self, data):
-        self.store = data
-        self.persist()
+        with open(self.path, 'w+') as f:
+            f.write(json.dumps(self.data))
 
 
-class LogDictMachine:
-    def __init__(self, state_machine={}):
-        self.state_machine = state_machine.store.copy()
+class Log(collections.UserList):
+    def __init__(self):
+        super().__init__()
+        self.path = os.path.join(config['storage'], 'log')
+        #  loading
+        if os.path.isfile(self.path):
+            with open(self.path, 'r') as f:
+                self.data = list(map(json.loads, f.readlines()))
 
+    def persist(self, start, stop):
+        with open(self.path, '+a') as f:
+            for entry in self[start:stop]:
+                f.write(json.dumps(entry) + '\n')
+
+
+class Compactor():
+    def __init__(self):
+        self.count = 0
+        self.term = None
+        self.data = {}
+        self.path = os.path.join(config['storage'], 'compact')
+        #  load
+        if os.path.isfile(self.path):
+            with open(self.path, 'r') as f:
+                raw = json.loads(f.read())
+                self.__dict__.update(raw)
+
+    @property
+    def index(self):
+        return self.count - 1
+
+    def persist(self):
+        with open(self.path, 'w+') as f:
+            f.write(json.dumps({'count': self.count,
+                                'term': self.term,
+                                'data': self.data}))
+
+
+class StateMachine(collections.UserDict):
     def apply(self, items):
         for item in items:
             item = item['data']
             if item['action'] == 'change':
-                self.state_machine[item['key']] = item['value']
+                self.data[item['key']] = item['value']
             elif item['action'] == 'delete':
-                del self.state_machine[item['key']]
+                del self.data[item['key']]
 
 
-class LogDict:
-    def __init__(self):
-        self.log = []
-        self.load_log()
-        self.commitIndex = -1
-        self.lastApplied = -1
-        self.compacted_log = PersistentDict(os.path.join(config['storage'], 'compacted'), {})
-        self.compacted_count = 0  # compacted items count, or last compacted item index + 1
-        self.compacted_term = None  # term of last compacted item
-        self.state_machine = LogDictMachine(state_machine=self.compacted_log)
+class LogManager:
+    def __init__(self, compactor=Compactor, log=Log, machine=StateMachine):
+        self.log = log()
+        self.compacted = compactor()
+        self.state_machine = machine(self.compacted.data)
+        self.state_machine.apply(self.log)
+        self.commitIndex = self.compacted.count + len(self.log) - 1
+        self.lastApplied = self.commitIndex
 
-    @property
-    def compacted_index(self):  # TODO: maybe remove?
-        return self.compacted_count - 1
+    def __getitem__(self, index):
+        if type(index) is slice:
+            start = index.start - self.compacted.count if index.start else None
+            stop = index.stop - self.compacted.count if index.stop else None
+            return self.log[start:stop:index.step]
+        elif type(index) is int:
+            return self.log[index - self.compacted.count]
 
     @property
     def index(self):
-        return self.compacted_count + len(self.log) - 1
+        return self.compacted.index + len(self.log)
 
     def term(self, index=-1):
-        if not self.log or index < self.compacted_index:
-            return self.compacted_term
+        if not len(self.log) or index < self.compacted.index:
+            return self.compacted.index
         else:
             return self[index]['term']
 
-    def __getitem__(self, index):
-        #  TODO: what if index < self.compacted_index ?
-        if type(index) is slice:
-            start = index.start - self.compacted_count if index.start else None
-            stop = index.stop - self.compacted_count if index.stop else None
-            return self.log[start:stop:index.step]
-        elif type(index) is int:
-            return self.log[index - self.compacted_count]
-
     def append_entries(self, entries, prevLogIndex):
-        #  TODO: what if prevLogIndex < self.commitIndex ?
-        del self.log[prevLogIndex - self.compacted_count + 1:]
-        self.log += entries
+        del self.log.data[prevLogIndex - self.compacted.count + 1:]
+        self.log.data += entries
 
     def commit(self, leaderCommit):
-        ## TODO: what if  leaderCommit > self.index?
-        if leaderCommit > self.commitIndex:
-            self.commitIndex = min(leaderCommit, self.index + 1)
-            logger.debug('Advancing commit to {}'.format(self.commitIndex))
-            self.state_machine.apply(self[self.lastApplied + 1:self.commitIndex + 1])
-            # self.persist_log()
-            print('STATE MACHINE:', self.state_machine.state_machine)
-            print('LOG:', self.log)
-            self.lastApplied = self.commitIndex
-            self.touch_compaction_timer() # TODO: right place?
+        if leaderCommit <= self.commitIndex:  # or leaderCommit > self.index:
+            return
 
-    def persist_log(self):
-        for entry in self[self.lastApplied + 1:self.commitIndex + 1]:
-            with open(os.path.join(config['storage'], 'log'), 'a+') as f:
-                f.write(json.dumps(payload) + '\n')
+        self.commitIndex = min(leaderCommit, self.index + 1)  # +1 ?
+        logger.debug('Advancing commit to {}'.format(self.commitIndex))
+        self.log.persist(self.lastApplied - self.compacted.index,
+                         self.commitIndex - self.compacted.index)
+        self.state_machine.apply(self[self.lastApplied + 1:self.commitIndex + 1])
+        logger.debug('State machine: {}'.format(self.state_machine.data))
+        logger.debug('Log: {}'.format(self.log.data))
+        self.lastApplied = self.commitIndex
+        self.compaction_timer_touch()
 
-    def touch_compaction_timer(self):
+    def compact(self):
+        del self.compaction_timer
+        if self.commitIndex - self.compacted.count < 3:
+            return
+        logger.debug('Compaction started')
+        self.compacted.data = self.state_machine.data
+        self.compacted.term = self.term(self.lastApplied)
+        self.compacted.persist()
+        self.log.data = self[self.lastApplied + 1:]
+        self.log.persist(0, self.commitIndex - self.compacted.count)
+        self.compacted.count = self.lastApplied + 1
+
+        if os.path.isfile(self.log.path):
+            os.remove(self.log.path)
+        logger.debug('Compacted: {}'.format(self.compacted.data))
+        logger.debug('Log: {}'.format(self.log.data))
+
+    def compaction_timer_touch(self):
         if not hasattr(self, 'compaction_timer'):
             loop = asyncio.get_event_loop()
             self.compaction_timer = loop.call_later(1, self.compact)
 
-    def compact(self):
-        del self.compaction_timer
-        if self.commitIndex - self.compacted_count < 3:
-            return
-        logger.debug('Compaction started')
-        self.compacted_log.replace(self.state_machine.state_machine)
-        self.compacted_term = self.term(self.lastApplied)
-        self.log = self[self.lastApplied + 1:]
-        self.compacted_count = self.lastApplied + 1
 
-        if os.path.isfile(os.path.join(config['storage'], 'log')):
-            os.remove(os.path.join(config['storage'], 'log'))
-        print('COMPACT:', self.compacted_log.store)
-        print('LOG:', self.log)
+class DictStateMachine(StateMachine):
+    pass
 
-    def load_log(self):
-        logfile = os.path.join(config['storage'], 'log')
-        if os.path.isfile(logfile):
-            with open(logfile, 'r') as f:
-                entries = f.readlines()
-                self.log = map(json.loads, entries)
+
+class DictLog(Log):
+    pass
+
+
+class DictLogManager(LogManager):
+    pass
