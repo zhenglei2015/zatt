@@ -68,18 +68,8 @@ class Compactor():
                                 'data': self.data}))
 
 
-class StateMachine(collections.UserDict):
-    def apply(self, items):
-        for item in items:
-            item = item['data']
-            if item['action'] == 'change':
-                self.data[item['key']] = item['value']
-            elif item['action'] == 'delete':
-                del self.data[item['key']]
-
-
 class LogManager:
-    def __init__(self, compactor=Compactor, log=Log, machine=StateMachine):
+    def __init__(self, compactor=Compactor, log=Log, machine=None):
         self.log = log()
         self.compacted = compactor()
         self.state_machine = machine(self.compacted.data)
@@ -146,13 +136,15 @@ class LogManager:
             self.compaction_timer = loop.call_later(1, self.compact)
 
 
-class DictStateMachine(StateMachine):
-    pass
+class DictStateMachine(collections.UserDict):
+    def apply(self, items):
+        for item in items:
+            item = item['data']
+            if item['action'] == 'change':
+                self.data[item['key']] = item['value']
+            elif item['action'] == 'delete':
+                del self.data[item['key']]
 
 
-class DictLog(Log):
-    pass
-
-
-class DictLogManager(LogManager):
-    pass
+def factory_dict_manager():
+    return LogManager(compactor=Compactor, log=Log, machine=DictStateMachine)

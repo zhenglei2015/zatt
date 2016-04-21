@@ -2,7 +2,7 @@ import asyncio
 import random
 import os
 from collections import Counter, OrderedDict
-from .persistence import PersistentDict, LogManager
+from .persistence import PersistentDict, factory_dict_manager
 from .logger import logger
 from .config import config
 
@@ -19,7 +19,7 @@ class State:
             self.persist = PersistentDict(os.path.join(config['storage'], 'state'),
                                           {'votedFor': None, 'currentTerm': 0})
             self.volatile = {'leaderId': None, 'Id': config['id']}
-            self.log = LogManager()
+            self.log = factory_dict_manager()
 
     def data_received_peer(self, peer_id, message):
         logger.debug('Received {} from {}'.format(message['type'], peer_id))
