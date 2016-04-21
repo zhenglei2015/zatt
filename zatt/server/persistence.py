@@ -93,7 +93,7 @@ class LogManager:
         if index == -1:
             return None
         if not len(self.log) or index < self.compacted.index:
-            return self.compacted.index
+            return self.compacted.term
         else:
             return self[index]['term']
 
