@@ -108,6 +108,11 @@ class Follower(State):
         success = term_is_current and prev_log_term_match
 
         if success:
+            if 'compact_data' in message:
+                self.log.compacted.data = message['compact_data']
+                self.log.compacted.term = message['compact_term']
+                self.log.compacted.count = message['compact_count']
+                self.log.state_machine.data = self.log.compacted.data
             self.log.append_entries(message['entries'],
                                     message['prevLogIndex'])
             self.volatile['leaderId'] = message['leaderId']
@@ -117,7 +122,7 @@ class Follower(State):
         else:
             logger.warning('Couldnt append entries. cause: {}'.format('wrong\
                 term' if not term_is_current else 'prev log term mismatch'))
-
+            
         resp = {'type': 'response_append', 'next_index': self.log.index + 1,
                 'term': self.persist['currentTerm']}
         self.orchestrator.send_peer(peer_id, resp)
@@ -176,6 +181,11 @@ class Leader(State):
                    'entries': self.log[self.nextIndex[peer_id]:
                                        self.nextIndex[peer_id] + 2]}
             msg.update({'prevLogTerm': self.log.term(msg['prevLogIndex'])})
+
+            if self.nextIndex[peer_id] <= self.log.compacted.index:
+                msg.update({'compact_data': self.log.compacted.data,
+                            'compact_term': self.log.compacted.term,
+                            'compact_count': self.log.compacted.count})
 
             logger.debug('Sending {} entries to {}. Start index {}'
                          .format(len(msg['entries']), peer_id,
