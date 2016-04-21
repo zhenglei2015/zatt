@@ -90,6 +90,8 @@ class LogManager:
         return self.compacted.index + len(self.log)
 
     def term(self, index=-1):
+        if index == -1:
+            return None
         if not len(self.log) or index < self.compacted.index:
             return self.compacted.index
         else:
@@ -107,7 +109,8 @@ class LogManager:
         logger.debug('Advancing commit to {}'.format(self.commitIndex))
         self.log.persist(self.lastApplied - self.compacted.index,
                          self.commitIndex - self.compacted.index)
-        self.state_machine.apply(self[self.lastApplied + 1:self.commitIndex + 1])
+        self.state_machine.apply(self[self.lastApplied + 1:
+                                      self.commitIndex + 1])
         logger.debug('State machine: {}'.format(self.state_machine.data))
         logger.debug('Log: {}'.format(self.log.data))
         self.lastApplied = self.commitIndex
