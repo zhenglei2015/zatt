@@ -113,6 +113,8 @@ class Follower(State):
                 self.log.compacted.term = message['compact_term']
                 self.log.compacted.count = message['compact_count']
                 self.log.state_machine.data = self.log.compacted.data
+                self.log.commitIndex = self.log.compacted.count + len(self.log) - 1
+                self.log.lastApplied = self.log.commitIndex
             self.log.append_entries(message['entries'],
                                     message['prevLogIndex'])
             self.volatile['leaderId'] = message['leaderId']

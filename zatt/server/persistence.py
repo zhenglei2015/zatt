@@ -69,9 +69,9 @@ class Compactor():
 
 
 class LogManager:
-    def __init__(self, compactor=Compactor, log=Log, machine=None):
-        self.log = log()
-        self.compacted = compactor()
+    def __init__(self, machine=None):
+        self.log = Log()
+        self.compacted = Compactor()
         self.state_machine = machine(self.compacted.data)
         self.state_machine.apply(self.log)
         self.commitIndex = self.compacted.count + len(self.log) - 1
