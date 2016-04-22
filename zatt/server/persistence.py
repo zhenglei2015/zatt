@@ -74,8 +74,21 @@ class LogManager:
         self.compacted = compactor()
         self.state_machine = machine(self.compacted.data)
         self.state_machine.apply(self.log)
-        self.commitIndex = self.compacted.index + len(self.log)
+        self.commitIndex = self.compacted.count + len(self.log) - 1
         self.lastApplied = self.commitIndex
+        # print('-' * 20)
+        # print('Log init')
+        # print(self.index)
+        # print(len(self.log))
+        # print('las')
+        # print(self.commitIndex)
+        # print(self.lastApplied)
+        # print('compact')
+        # print(self.compacted.count)
+        # print(self.compacted.term)
+        # print(self.compacted.data)
+        # print(self.state_machine.data)
+        # print('-' * 20)
 
     def __getitem__(self, index):
         if type(index) is slice:
@@ -87,15 +100,26 @@ class LogManager:
 
     @property
     def index(self):
-        return self.compacted.index + len(self.log)
+        return self.compacted.count + len(self.log) - 1
 
     def term(self, index=-1):
         if index == -1:
             return None
         if not len(self.log) or index <= self.compacted.index:
+            print('term1')
             return self.compacted.term
         else:
-            return self[index]['term']
+            try:
+                return self[index]['term']
+            except IndexError:
+                print('IndexError')
+                print(index)
+                print(self.log.data)
+                print(self.compacted.data)
+                print(self.compacted.count)
+                print(self.compacted.term)
+                import sys
+                sys.exit(1)
 
     def append_entries(self, entries, prevLogIndex):
         del self.log.data[prevLogIndex - self.compacted.count + 1:]
@@ -114,6 +138,7 @@ class LogManager:
         logger.debug('State machine: {}'.format(self.state_machine.data))
         logger.debug('Log: {}'.format(self.log.data))
         self.lastApplied = self.commitIndex
+        print('Last applied is now', self.lastApplied)
         self.compaction_timer_touch()
 
     def compact(self):

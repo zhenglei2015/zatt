@@ -122,8 +122,8 @@ class Follower(State):
         else:
             logger.warning('Couldnt append entries. cause: {}'.format('wrong\
                 term' if not term_is_current else 'prev log term mismatch'))
-            print(message['prevLogIndex'], self.log.index)
-            print(message['prevLogTerm'], self.log.term(message['prevLogIndex']))
+            # print(message['prevLogIndex'], self.log.index)
+            # print(message['prevLogTerm'], self.log.term(message['prevLogIndex']))
 
         resp = {'type': 'response_append', 'next_index': self.log.index + 1,
                 'term': self.persist['currentTerm']}
@@ -202,10 +202,12 @@ class Leader(State):
     def handle_peer_response_append(self, peer_id, message):
         self.nextIndex[peer_id] = message['next_index']
 
-        self.nextIndex[self.volatile['Id']] = max(self.log.index, 0)
+        self.nextIndex[self.volatile['Id']] = self.log.index + 1
         index_counter = Counter(map(lambda x: x-1, self.nextIndex.values()))
         index_counter = OrderedDict(reversed(sorted(index_counter.items())))
         total = 0
+        # print('next index', self.nextIndex)
+        # print('index counter', index_counter)
         for index, count in index_counter.items():
             total += count
             if total / len(config['cluster']) > 0.5:
@@ -226,7 +228,7 @@ class Leader(State):
         for client_index, clients in self.waiting_clients.items():
             if client_index >= self.log.commitIndex:
                 for client in clients:
-                    client.send({'type': 'result', 'success': True})
+                    client.send({'type': 'result', 'success': True})  # TODO
                     logger.debug('Sent successful response to client')
                 to_delete.append(client_index)
         for index in to_delete:
