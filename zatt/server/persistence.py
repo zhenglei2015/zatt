@@ -74,7 +74,7 @@ class LogManager:
         self.compacted = compactor()
         self.state_machine = machine(self.compacted.data)
         self.state_machine.apply(self.log)
-        self.commitIndex = self.compacted.count + len(self.log) - 1
+        self.commitIndex = self.compacted.index + len(self.log)
         self.lastApplied = self.commitIndex
 
     def __getitem__(self, index):
@@ -92,7 +92,7 @@ class LogManager:
     def term(self, index=-1):
         if index == -1:
             return None
-        if not len(self.log) or index < self.compacted.index:
+        if not len(self.log) or index <= self.compacted.index:
             return self.compacted.term
         else:
             return self[index]['term']
@@ -105,7 +105,7 @@ class LogManager:
         if leaderCommit <= self.commitIndex:  # or leaderCommit > self.index:
             return
 
-        self.commitIndex = min(leaderCommit, self.index + 1)  # +1 ?
+        self.commitIndex = min(leaderCommit, self.index)  # +1 ?
         logger.debug('Advancing commit to {}'.format(self.commitIndex))
         self.log.persist(self.lastApplied - self.compacted.index,
                          self.commitIndex - self.compacted.index)
@@ -123,10 +123,10 @@ class LogManager:
         logger.debug('Compaction started')
         self.compacted.data = self.state_machine.data
         self.compacted.term = self.term(self.lastApplied)
-        self.compacted.persist()
         self.log.data = self[self.lastApplied + 1:]
         self.log.persist(0, self.commitIndex - self.compacted.count)
         self.compacted.count = self.lastApplied + 1
+        self.compacted.persist()
 
         if os.path.isfile(self.log.path):
             os.remove(self.log.path)

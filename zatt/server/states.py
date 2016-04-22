@@ -122,7 +122,9 @@ class Follower(State):
         else:
             logger.warning('Couldnt append entries. cause: {}'.format('wrong\
                 term' if not term_is_current else 'prev log term mismatch'))
-            
+            print(message['prevLogIndex'], self.log.index)
+            print(message['prevLogTerm'], self.log.term(message['prevLogIndex']))
+
         resp = {'type': 'response_append', 'next_index': self.log.index + 1,
                 'term': self.persist['currentTerm']}
         self.orchestrator.send_peer(peer_id, resp)
@@ -200,8 +202,8 @@ class Leader(State):
     def handle_peer_response_append(self, peer_id, message):
         self.nextIndex[peer_id] = message['next_index']
 
-        self.nextIndex[self.volatile['Id']] = self.log.index
-        index_counter = Counter(self.nextIndex.values())
+        self.nextIndex[self.volatile['Id']] = max(self.log.index, 0)
+        index_counter = Counter(map(lambda x: x-1, self.nextIndex.values()))
         index_counter = OrderedDict(reversed(sorted(index_counter.items())))
         total = 0
         for index, count in index_counter.items():
