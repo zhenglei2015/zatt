@@ -22,44 +22,44 @@ class State:
             self.volatile = {'leaderId': None, 'Id': config['id']}
             self.log = LogManager()
 
-    def data_received_peer(self, peer_id, message):
-        logger.debug('Received {} from {}'.format(message['type'], peer_id))
+    def data_received_peer(self, peer_id, msg):
+        logger.debug('Received {} from {}'.format(msg['type'], peer_id))
 
-        if message['term'] > self.persist['currentTerm']:
-            self.persist['currentTerm'] = message['term']
+        if msg['term'] > self.persist['currentTerm']:
+            self.persist['currentTerm'] = msg['term']
             if not type(self) is Follower:
                 logger.info('Remote term is higher, converting to Follower')
                 self.orchestrator.change_state(Follower)
-                self.orchestrator.state.data_received_peer(peer_id, message)
+                self.orchestrator.state.data_received_peer(peer_id, msg)
                 return
         else:
-            method = getattr(self, 'handle_peer_' + message['type'], None)
+            method = getattr(self, 'handle_peer_' + msg['type'], None)
             if method:
-                method(peer_id, message)
+                method(peer_id, msg)
             else:
                 logger.info('Unrecognized message from {}: {}'.format(peer_id,
-                                                                      message))
+                                                                      msg))
 
-    def data_received_client(self, protocol, message):
-        method = getattr(self, 'handle_client_' + message['type'], None)
+    def data_received_client(self, protocol, msg):
+        method = getattr(self, 'handle_client_' + msg['type'], None)
         if method:
-            method(protocol, message)
+            method(protocol, msg)
         else:
-            logger.info('Unrecognized message from {}: {}'.
+            logger.info('Unrecognized msg from {}: {}'.
                         format(protocol.transport.get_extra_info('peername'),
-                               message))
+                               msg))
 
-    def handle_client_append(self, protocol, message):
-        message = {'type': 'redirect',
-                   'leader': self.config['cluster'][self.volatile['leaderId']]}
-        protocol.send(message)
+    def handle_client_append(self, protocol, msg):
+        msg = {'type': 'redirect',
+               'leader': self.config['cluster'][self.volatile['leaderId']]}
+        protocol.send(msg)
         logger.info('Redirect client {}:{} to leader'.format(
                      *protocol.transport.get_extra_info('peername')))
 
-    def handle_client_get(self, protocol, message):
+    def handle_client_get(self, protocol, msg):
         protocol.send(self.log.state_machine.data)
 
-    def handle_client_diagnostic(self, protocol, message):
+    def handle_client_diagnostic(self, protocol, msg):
         msg = {'status': self.__class__.__name__,
                'persist': {'votedFor': self.persist['votedFor'],
                            'currentTerm': self.persist['currentTerm']},
@@ -99,15 +99,15 @@ class Follower(State):
                                               Candidate)
         logger.debug('Election timer restarted: {}s'.format(timeout))
 
-    def handle_peer_request_vote(self, peer_id, message):
+    def handle_peer_request_vote(self, peer_id, msg):
         self.restart_election_timer()
-        term_is_current = message['term'] >= self.persist['currentTerm']
-        can_vote = self.persist['votedFor'] in [None, message['candidateId']]
-        index_is_current = message['lastLogIndex'] >= self.log.index
+        term_is_current = msg['term'] >= self.persist['currentTerm']
+        can_vote = self.persist['votedFor'] in [None, msg['candidateId']]
+        index_is_current = msg['lastLogIndex'] >= self.log.index
         vote = term_is_current and can_vote and index_is_current
 
         if vote:
-            self.persist['votedFor'] = message['candidateId']
+            self.persist['votedFor'] = msg['candidateId']
 
         logger.debug('Voting for {}. Term:{} Vote:{} Index:{}'.format(peer_id,
                      term_is_current, can_vote, index_is_current))
@@ -116,24 +116,24 @@ class Follower(State):
                     'term': self.persist['currentTerm']}
         self.orchestrator.send_peer(peer_id, response)
 
-    def handle_peer_append_entries(self, peer_id, message):
+    def handle_peer_append_entries(self, peer_id, msg):
         self.restart_election_timer()
 
-        term_is_current = message['term'] >= self.persist['currentTerm']
-        prev_log_term_match = message['prevLogTerm'] is None or\
-            self.log.term(message['prevLogIndex']) == message['prevLogTerm']
+        term_is_current = msg['term'] >= self.persist['currentTerm']
+        prev_log_term_match = msg['prevLogTerm'] is None or\
+            self.log.term(msg['prevLogIndex']) == msg['prevLogTerm']
         success = term_is_current and prev_log_term_match
 
-        if 'compact_data' in message:
-            self.log = LogManager(compact_count=message['compact_count'],
-                                  compact_term=message['compact_term'],
-                                  compact_data=message['compact_data'])
-            self.volatile['leaderId'] = message['leaderId']
+        if 'compact_data' in msg:
+            self.log = LogManager(compact_count=msg['compact_count'],
+                                  compact_term=msg['compact_term'],
+                                  compact_data=msg['compact_data'])
+            self.volatile['leaderId'] = msg['leaderId']
             logger.debug('Initialized Log with compact data from Leader')
         elif success:
-            self.log.append_entries(message['entries'], message['prevLogIndex'])
-            self.log.commit(message['leaderCommit'])
-            self.volatile['leaderId'] = message['leaderId']
+            self.log.append_entries(msg['entries'], msg['prevLogIndex'])
+            self.log.commit(msg['leaderCommit'])
+            self.volatile['leaderId'] = msg['leaderId']
             logger.debug('Log index is now {}'.format((self.log.index)))
         else:
             logger.warning('Couldnt append entries. cause: {}'.format('wrong\
@@ -155,19 +155,19 @@ class Candidate(Follower):
 
     def send_vote_requests(self):
         logger.info('Broadcasting request_vote')
-        message = {'type': 'request_vote', 'term': self.persist['currentTerm'],
-                   'candidateId': self.volatile['Id'],
-                   'lastLogIndex': self.log.index,
-                   'lastLogTerm': self.log.term()}
-        self.orchestrator.broadcast_peers(message)
+        msg = {'type': 'request_vote', 'term': self.persist['currentTerm'],
+               'candidateId': self.volatile['Id'],
+               'lastLogIndex': self.log.index,
+               'lastLogTerm': self.log.term()}
+        self.orchestrator.broadcast_peers(msg)
 
-    def handle_peer_append_entries(self, peer_id, message):
+    def handle_peer_append_entries(self, peer_id, msg):
         logger.debug('Converting to Follower')
         self.orchestrator.change_state(Follower)
-        self.orchestrator.state.handle_peer_append_entries(peer_id, message)
+        self.orchestrator.state.handle_peer_append_entries(peer_id, msg)
 
-    def handle_peer_response_vote(self, peer_id, message):
-        self.votes_count += message['voteGranted']
+    def handle_peer_response_vote(self, peer_id, msg):
+        self.votes_count += msg['voteGranted']
         logger.info('Vote count: {}'.format(self.votes_count))
         if self.votes_count > len(self.config['cluster']) / 2:
             self.orchestrator.change_state(Leader)
@@ -213,8 +213,8 @@ class Leader(State):
         loop = asyncio.get_event_loop()
         self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
-    def handle_peer_response_append(self, peer_id, message):
-        self.nextIndex[peer_id] = message['next_index']
+    def handle_peer_response_append(self, peer_id, msg):
+        self.nextIndex[peer_id] = msg['next_index']
 
         self.nextIndex[self.volatile['Id']] = self.log.index + 1
         index_counter = Counter(map(lambda x: x-1, self.nextIndex.values()))
@@ -227,8 +227,8 @@ class Leader(State):
                 self.send_client_append_response()
                 break
 
-    def handle_client_append(self, protocol, message):
-        entry = {'term': self.persist['currentTerm'], 'data': message['data']}
+    def handle_client_append(self, protocol, msg):
+        entry = {'term': self.persist['currentTerm'], 'data': msg['data']}
         self.log.append_entries([entry], self.log.index)
         if self.log.index in self.waiting_clients:
             self.waiting_clients[self.log.index].append(protocol)

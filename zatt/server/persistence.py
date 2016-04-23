@@ -158,15 +158,11 @@ class LogManager:
         if self.commitIndex - self.compacted.count < 3:
             return
         logger.debug('Compaction started')
-        print(self.state_machine.lastApplied + 1)
         remaining_log = self[self.state_machine.lastApplied + 1:]
         self.compacted.data = self.state_machine.data
         self.compacted.term = self.term(self.state_machine.lastApplied)
         self.compacted.count = self.state_machine.lastApplied + 1
         self.compacted.persist()
-        print(self.compacted.count)
-        print(remaining_log)
-        print('-' * 20)
         self.log.replace(remaining_log)
 
         logger.debug('Compacted: {}'.format(self.compacted.data))
