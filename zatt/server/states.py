@@ -59,6 +59,23 @@ class State:
     def handle_client_get(self, protocol, message):
         protocol.send(self.log.state_machine.data)
 
+    def handle_client_diagnostic(self, protocol, message):
+        msg = {'status': self.__class__.__name__,
+               'persist': {'votedFor': self.persist['votedFor'],
+                           'currentTerm': self.persist['currentTerm']},
+               'volatile': {'leaderId': self.volatile['leaderId'],
+                            'Id': self.volatile['Id']},
+               'log': {'commitIndex': self.log.commitIndex,
+                       'log': self.log.log.__dict__,
+                       'state_machine': self.log.state_machine.__dict__,
+                       'compacted': self.log.compacted.__dict__}
+               }
+        if type(self) is Leader:
+            msg.update({'leaderStatus':
+                        {'waiting_clients': self.waiting_clients,
+                         'netIndex': self.nextIndex}})
+        protocol.send(msg)
+
 
 class Follower(State):
     def __init__(self, config, old_state=None, orchestrator=None):

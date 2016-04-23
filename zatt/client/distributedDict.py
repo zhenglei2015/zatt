@@ -79,6 +79,21 @@ class DistributedDict(collections.MutableMapping):
         self.store = json.loads(buff.decode('utf-8'))
         sock.close()
 
+    def diagnose(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(self.target)
+        sock.send(str(json.dumps({'type': 'diagnostic'})).encode())
+        buff = bytes()
+        while True:
+            block = sock.recv(128)
+            if not block:
+                break
+            buff += block
+        resp = json.loads(buff.decode('utf-8'))
+        sock.close()
+        return resp
+
+
 
 
 if __name__ == '__main__':
