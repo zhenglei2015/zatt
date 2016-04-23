@@ -68,8 +68,16 @@ class State:
                'log': {'commitIndex': self.log.commitIndex,
                        'log': self.log.log.__dict__,
                        'state_machine': self.log.state_machine.__dict__,
-                       'compacted': self.log.compacted.__dict__}
-               }
+                       'compacted': self.log.compacted.__dict__},
+               'files': {}}
+
+        for filename in ['state', 'log', 'compact']:
+            try:
+                with open(join(config['storage'], filename), 'r') as f:
+                    msg['files'][filename] = f.read()
+            except FileNotFoundError:
+                msg['files'][filename] = None
+
         if type(self) is Leader:
             msg.update({'leaderStatus':
                         {'waiting_clients': self.waiting_clients,
