@@ -4,7 +4,7 @@ from .config import config
 from .logger import logger
 
 
-def run():
+def configure(config=config):
     loop = asyncio.get_event_loop()
     orchestrator = Orchestrator(config)
     coro = loop.create_datagram_endpoint(lambda: PeerProtocol(orchestrator),
@@ -18,6 +18,12 @@ def run():
     server = loop.run_until_complete(coro)
 
     logger.info('Serving on {}'.format(config['cluster'][config['id']]))
+    return server
+
+
+def run():
+    server = configure()
+    loop = asyncio.get_event_loop()
     try:
         loop.run_forever()
     except KeyboardInterrupt:

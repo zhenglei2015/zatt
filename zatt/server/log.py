@@ -3,11 +3,10 @@ import json
 import collections
 import asyncio
 from .logger import logger
-from .config import config
 
 
 class Log(collections.UserList):
-    def __init__(self, erase_log=False):
+    def __init__(self, config, erase_log=False):
         super().__init__()
         self.path = os.path.join(config['storage'], 'log')
         #  load
@@ -37,7 +36,7 @@ class Log(collections.UserList):
 
 
 class Compactor():
-    def __init__(self, count=0, term=None, data={}):
+    def __init__(self, config, count=0, term=None, data={}):
         self.count = count
         self.term = term
         self.data = data
@@ -80,11 +79,12 @@ class DictStateMachine(collections.UserDict):
 
 
 class LogManager:
-    def __init__(self, machine=DictStateMachine, compact_count=0,
+    def __init__(self, config, machine=DictStateMachine, compact_count=0,
                  compact_term=None, compact_data={}):
         erase_log = compact_count or compact_term or compact_data
-        self.log = Log(erase_log)
-        self.compacted = Compactor(compact_count, compact_term, compact_data)
+        self.log = Log(config, erase_log)
+        self.compacted = Compactor(config, compact_count, compact_term,
+                                   compact_data)
         self.state_machine = machine(data=self.compacted.data,
                                      lastApplied=self.compacted.index)
         self.commitIndex = self.compacted.index + len(self.log)

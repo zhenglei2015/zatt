@@ -10,7 +10,8 @@ def tick():
     loop.call_later(1, tick)
 
 if config['debug']:
-    formatter_patten = '%(message)s'
+    formatter_patten = '%(app_name)s %(message)s'
+
     logLevel = logging.DEBUG
     loop = asyncio.get_event_loop()
     loop.call_later(1, tick)
@@ -24,3 +25,6 @@ formatter = logging.Formatter(formatter_patten)
 syslog.setFormatter(formatter)
 logger.setLevel(logLevel)
 logger.addHandler(syslog)
+
+extra = {'app_name': config['id']}
+logger = logging.LoggerAdapter(logger, extra)
