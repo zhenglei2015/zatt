@@ -53,7 +53,7 @@ class State:
         msg = {'type': 'redirect',
                'leader': self.config['cluster'][self.volatile['leaderId']]}
         protocol.send(msg)
-        logger.info('Redirect client {}:{} to leader'.format(
+        logger.debug('Redirect client {}:{} to leader'.format(
                      *protocol.transport.get_extra_info('peername')))
 
     def handle_client_get(self, protocol, msg):
@@ -185,6 +185,7 @@ class Leader(State):
     def __init__(self, config, old_state=None, orchestrator=None):
         super().__init__(config, old_state, orchestrator)
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
+        self.volatile['leaderId'] = self.volatile['Id']
         self.nextIndex = {x: self.log.commitIndex + 1
                           for x in self.config['cluster']}
         self.send_append_entries()
