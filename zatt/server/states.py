@@ -2,7 +2,7 @@ import asyncio
 import random
 from os.path import join
 from collections import Counter, OrderedDict
-from .persistence import PersistentDict, factory_dict_manager
+from .persistence import PersistentDict, LogManager
 from .logger import logger
 from .config import config
 
@@ -20,7 +20,7 @@ class State:
             self.persist = PersistentDict(join(config['storage'], 'state'),
                                           {'votedFor': None, 'currentTerm': 0})
             self.volatile = {'leaderId': None, 'Id': config['id']}
-            self.log = factory_dict_manager()
+            self.log = LogManager()
 
     def data_received_peer(self, peer_id, message):
         logger.debug('Received {} from {}'.format(message['type'], peer_id))
@@ -107,25 +107,20 @@ class Follower(State):
             self.log.term(message['prevLogIndex']) == message['prevLogTerm']
         success = term_is_current and prev_log_term_match
 
-        if success:
-            if 'compact_data' in message:
-                self.log.compacted.data = message['compact_data']
-                self.log.compacted.term = message['compact_term']
-                self.log.compacted.count = message['compact_count']
-                self.log.state_machine.data = self.log.compacted.data
-                self.log.commitIndex = self.log.compacted.count + len(self.log) - 1
-                self.log.lastApplied = self.log.commitIndex
-            self.log.append_entries(message['entries'],
-                                    message['prevLogIndex'])
+        if 'compact_data' in message:
+            self.log = LogManager(compact_count=message['compact_count'],
+                                  compact_term=message['compact_term'],
+                                  compact_data=message['compact_data'])
             self.volatile['leaderId'] = message['leaderId']
+            logger.debug('Initialized Log with compact data from Leader')
+        elif success:
+            self.log.append_entries(message['entries'], message['prevLogIndex'])
             self.log.commit(message['leaderCommit'])
-
-            logger.debug('Last index is now {}'.format((self.log.index)))
+            self.volatile['leaderId'] = message['leaderId']
+            logger.debug('Log index is now {}'.format((self.log.index)))
         else:
             logger.warning('Couldnt append entries. cause: {}'.format('wrong\
                 term' if not term_is_current else 'prev log term mismatch'))
-            # print(message['prevLogIndex'], self.log.index)
-            # print(message['prevLogTerm'], self.log.term(message['prevLogIndex']))
 
         resp = {'type': 'response_append', 'next_index': self.log.index + 1,
                 'term': self.persist['currentTerm']}
@@ -208,8 +203,6 @@ class Leader(State):
         index_counter = Counter(map(lambda x: x-1, self.nextIndex.values()))
         index_counter = OrderedDict(reversed(sorted(index_counter.items())))
         total = 0
-        # print('next index', self.nextIndex)
-        # print('index counter', index_counter)
         for index, count in index_counter.items():
             total += count
             if total / len(config['cluster']) > 0.5:

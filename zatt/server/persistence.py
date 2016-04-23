@@ -31,31 +31,50 @@ class PersistentDict(collections.UserDict):
 
 
 class Log(collections.UserList):
-    def __init__(self):
+    def __init__(self, erase_log=False):
         super().__init__()
         self.path = os.path.join(config['storage'], 'log')
-        #  loading
-        if os.path.isfile(self.path):
+        #  load
+        logger.debug('Initializing log')
+        if erase_log:
+            self.replace([])
+            logger.debug('Using parameters')
+        elif os.path.isfile(self.path):
             with open(self.path, 'r') as f:
                 self.data = list(map(json.loads, f.readlines()))
+            logger.debug('Using persisted data')
 
-    def persist(self, start, stop):
-        with open(self.path, '+a') as f:
-            for entry in self[start:stop]:
-                f.write(json.dumps(entry) + '\n')
+    def append_entries(self, entries, start):
+        if len(self.data) >= start:
+            self.replace(self.data[:start] + entries)
+        else:
+            self.data += entries
+            with open(self.path, '+a') as f:
+                for entry in entries:
+                    f.write(json.dumps(entry) + '\n')
+
+    def replace(self, new_data):
+        self.data = new_data
+        with open(self.path, 'w') as f:
+            lines = map(lambda x: json.dumps(x) + '\n', self.data)
+            f.writelines(lines)
 
 
 class Compactor():
-    def __init__(self):
-        self.count = 0
-        self.term = None
-        self.data = {}
+    def __init__(self, count=0, term=None, data={}):
+        self.count = count
+        self.term = term
+        self.data = data
         self.path = os.path.join(config['storage'], 'compact')
         #  load
-        if os.path.isfile(self.path):
+        logger.debug('Initializing compactor')
+        if count or term or data:
+            self.persist()
+            logger.debug('Using parameters')
+        elif os.path.isfile(self.path):
             with open(self.path, 'r') as f:
-                raw = json.loads(f.read())
-                self.__dict__.update(raw)
+                self.__dict__.update(json.loads(f.read()))
+            logger.debug('Using persisted data')
 
     @property
     def index(self):
@@ -68,27 +87,32 @@ class Compactor():
                                 'data': self.data}))
 
 
+class DictStateMachine(collections.UserDict):
+    def __init__(self, data={}, lastApplied=0):
+        super().__init__(data)
+        self.lastApplied = lastApplied
+
+    def apply(self, items, end):
+        items = items[self.lastApplied + 1:end + 1]
+        for item in items:
+            self.lastApplied += 1
+            item = item['data']
+            if item['action'] == 'change':
+                self.data[item['key']] = item['value']
+            elif item['action'] == 'delete':
+                del self.data[item['key']]
+
+
 class LogManager:
-    def __init__(self, machine=None):
-        self.log = Log()
-        self.compacted = Compactor()
-        self.state_machine = machine(self.compacted.data)
-        self.state_machine.apply(self.log)
-        self.commitIndex = self.compacted.count + len(self.log) - 1
-        self.lastApplied = self.commitIndex
-        # print('-' * 20)
-        # print('Log init')
-        # print(self.index)
-        # print(len(self.log))
-        # print('las')
-        # print(self.commitIndex)
-        # print(self.lastApplied)
-        # print('compact')
-        # print(self.compacted.count)
-        # print(self.compacted.term)
-        # print(self.compacted.data)
-        # print(self.state_machine.data)
-        # print('-' * 20)
+    def __init__(self, machine=DictStateMachine, compact_count=0,
+                 compact_term=None, compact_data={}):
+        erase_log = compact_count or compact_term or compact_data
+        self.log = Log(erase_log)
+        self.compacted = Compactor(compact_count, compact_term, compact_data)
+        self.state_machine = machine(data=self.compacted.data,
+                                     lastApplied=self.compacted.index)
+        self.commitIndex = self.compacted.index + len(self.log)
+        self.state_machine.apply(self, self.commitIndex)
 
     def __getitem__(self, index):
         if type(index) is slice:
@@ -100,45 +124,33 @@ class LogManager:
 
     @property
     def index(self):
-        return self.compacted.count + len(self.log) - 1
+        return self.compacted.index + len(self.log)
 
-    def term(self, index=-1):
-        if index == -1:
+    def term(self, index=None):
+        if index is None:
+            return self.term(self.index)
+        elif index == -1:
             return None
-        if not len(self.log) or index <= self.compacted.index:
-            print('term1')
+        elif not len(self.log) or index <= self.compacted.index:
             return self.compacted.term
         else:
-            try:
-                return self[index]['term']
-            except IndexError:
-                print('IndexError')
-                print(index)
-                print(self.log.data)
-                print(self.compacted.data)
-                print(self.compacted.count)
-                print(self.compacted.term)
-                import sys
-                sys.exit(1)
+            return self[index]['term']
 
     def append_entries(self, entries, prevLogIndex):
-        del self.log.data[prevLogIndex - self.compacted.count + 1:]
-        self.log.data += entries
+        self.log.append_entries(entries, prevLogIndex - self.compacted.index)
+        if entries:
+            logger.debug('Appending. New log: {}'.format(self.log.data))
 
     def commit(self, leaderCommit):
         if leaderCommit <= self.commitIndex:  # or leaderCommit > self.index:
             return
 
-        self.commitIndex = min(leaderCommit, self.index)  # +1 ?
+        self.commitIndex = min(leaderCommit, self.index)  # no overshoots
         logger.debug('Advancing commit to {}'.format(self.commitIndex))
-        self.log.persist(self.lastApplied - self.compacted.index,
-                         self.commitIndex - self.compacted.index)
-        self.state_machine.apply(self[self.lastApplied + 1:
-                                      self.commitIndex + 1])
+        # above is the real commit operation, just incrementing the counter!
+        # the state machine application could be asynchronous
+        self.state_machine.apply(self, self.commitIndex)
         logger.debug('State machine: {}'.format(self.state_machine.data))
-        logger.debug('Log: {}'.format(self.log.data))
-        self.lastApplied = self.commitIndex
-        print('Last applied is now', self.lastApplied)
         self.compaction_timer_touch()
 
     def compact(self):
@@ -146,15 +158,17 @@ class LogManager:
         if self.commitIndex - self.compacted.count < 3:
             return
         logger.debug('Compaction started')
+        print(self.state_machine.lastApplied + 1)
+        remaining_log = self[self.state_machine.lastApplied + 1:]
         self.compacted.data = self.state_machine.data
-        self.compacted.term = self.term(self.lastApplied)
-        self.log.data = self[self.lastApplied + 1:]
-        self.log.persist(0, self.commitIndex - self.compacted.count)
-        self.compacted.count = self.lastApplied + 1
+        self.compacted.term = self.term(self.state_machine.lastApplied)
+        self.compacted.count = self.state_machine.lastApplied + 1
         self.compacted.persist()
+        print(self.compacted.count)
+        print(remaining_log)
+        print('-' * 20)
+        self.log.replace(remaining_log)
 
-        if os.path.isfile(self.log.path):
-            os.remove(self.log.path)
         logger.debug('Compacted: {}'.format(self.compacted.data))
         logger.debug('Log: {}'.format(self.log.data))
 
@@ -162,17 +176,3 @@ class LogManager:
         if not hasattr(self, 'compaction_timer'):
             loop = asyncio.get_event_loop()
             self.compaction_timer = loop.call_later(1, self.compact)
-
-
-class DictStateMachine(collections.UserDict):
-    def apply(self, items):
-        for item in items:
-            item = item['data']
-            if item['action'] == 'change':
-                self.data[item['key']] = item['value']
-            elif item['action'] == 'delete':
-                del self.data[item['key']]
-
-
-def factory_dict_manager():
-    return LogManager(compactor=Compactor, log=Log, machine=DictStateMachine)
