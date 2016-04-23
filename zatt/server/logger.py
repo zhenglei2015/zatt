@@ -18,11 +18,9 @@ else:
     logLevel = logging.INFO
     formatter_patten = '%(asctime)s %(message)s'
 
-# extra = {'app_name':config['id']}
 logger = logging.getLogger(__name__)
 syslog = logging.StreamHandler()
 formatter = logging.Formatter(formatter_patten)
 syslog.setFormatter(formatter)
 logger.setLevel(logLevel)
 logger.addHandler(syslog)
-# logger = logging.LoggerAdapter(logger, extra)

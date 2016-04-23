@@ -1,16 +1,15 @@
 import asyncio
-from .protocol import Orchestrator, PeerProtocol, ClientProtocol
+from .protocols import Orchestrator, PeerProtocol, ClientProtocol
 from .config import config
 from .logger import logger
-
-
 
 
 def run():
     loop = asyncio.get_event_loop()
     orchestrator = Orchestrator(config)
-    coro = loop.create_datagram_endpoint(lambda: PeerProtocol(orchestrator),\
-        local_addr=config['cluster'][config['id']])
+    coro = loop.create_datagram_endpoint(lambda: PeerProtocol(orchestrator),
+                                         local_addr=config['cluster']
+                                         [config['id']])
     transport, _ = loop.run_until_complete(coro)
     orchestrator.peer_transport = transport
 

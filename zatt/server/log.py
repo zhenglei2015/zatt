@@ -6,30 +6,6 @@ from .logger import logger
 from .config import config
 
 
-class PersistentDict(collections.UserDict):
-    def __init__(self, path=None, data={}):
-        if os.path.isfile(path):
-            with open(path, 'r') as f:
-                data = json.loads(f.read())
-        self.path = path
-        super().__init__(data)
-
-    def __setitem__(self, key, value):
-        self.data[self.__keytransform__(key)] = value
-        self.persist()
-
-    def __delitem__(self, key):
-        del self.data[self.__keytransform__(key)]
-        self.persist()
-
-    def __keytransform__(self, key):
-        return key
-
-    def persist(self):
-        with open(self.path, 'w+') as f:
-            f.write(json.dumps(self.data))
-
-
 class Log(collections.UserList):
     def __init__(self, erase_log=False):
         super().__init__()
@@ -142,7 +118,7 @@ class LogManager:
             logger.debug('Appending. New log: {}'.format(self.log.data))
 
     def commit(self, leaderCommit):
-        if leaderCommit <= self.commitIndex:  # or leaderCommit > self.index:
+        if leaderCommit <= self.commitIndex:
             return
 
         self.commitIndex = min(leaderCommit, self.index)  # no overshoots
@@ -158,12 +134,12 @@ class LogManager:
         if self.commitIndex - self.compacted.count < 3:
             return
         logger.debug('Compaction started')
-        remaining_log = self[self.state_machine.lastApplied + 1:]
+        not_compacted_log = self[self.state_machine.lastApplied + 1:]
         self.compacted.data = self.state_machine.data
         self.compacted.term = self.term(self.state_machine.lastApplied)
         self.compacted.count = self.state_machine.lastApplied + 1
         self.compacted.persist()
-        self.log.replace(remaining_log)
+        self.log.replace(not_compacted_log)
 
         logger.debug('Compacted: {}'.format(self.compacted.data))
         logger.debug('Log: {}'.format(self.log.data))

@@ -1,5 +1,4 @@
 import asyncio
-import socket
 import json
 from .states import Follower
 from .logger import logger
@@ -41,7 +40,7 @@ class Orchestrator():
 class PeerProtocol(asyncio.Protocol):
     def __init__(self, orchestrator, first_message=None):
         self.orchestrator = orchestrator
-        self.first_message = first_message  # in case an immediate message is needed
+        self.first_message = first_message
 
     def connection_made(self, transport):
         self.transport = transport
@@ -61,8 +60,8 @@ class ClientProtocol(asyncio.Protocol):
         self.orchestrator = orchestrator
 
     def connection_made(self, transport):
-        logger.debug('Established connection with client {}:{}'\
-            .format(*transport.get_extra_info('peername')))
+        logger.debug('Established connection with client {}:{}'
+                     .format(*transport.get_extra_info('peername')))
         self.transport = transport
 
     def data_received(self, data):
@@ -70,8 +69,8 @@ class ClientProtocol(asyncio.Protocol):
         self.orchestrator.data_received_client(self, message)
 
     def connection_lost(self, exc):
-        logger.debug('Closed connection with client {}:{}'\
-            .format(*self.transport.get_extra_info('peername')))
+        logger.debug('Closed connection with client {}:{}'
+                     .format(*self.transport.get_extra_info('peername')))
 
     def send(self, message):
         self.transport.write(json.dumps(message).encode())

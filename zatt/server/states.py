@@ -1,15 +1,15 @@
 import asyncio
-import random
+from random import randrange
 from os.path import join
 from collections import Counter, OrderedDict
-from .persistence import PersistentDict, LogManager
+from .utils import PersistentDict
+from .log import LogManager
 from .logger import logger
 from .config import config
 
 
 class State:
     def __init__(self, config, old_state=None, orchestrator=None):
-        self.config = config
         if old_state:
             self.orchestrator = old_state.orchestrator
             self.persist = old_state.persist
@@ -51,7 +51,7 @@ class State:
 
     def handle_client_append(self, protocol, msg):
         msg = {'type': 'redirect',
-               'leader': self.config['cluster'][self.volatile['leaderId']]}
+               'leader': config['cluster'][self.volatile['leaderId']]}
         protocol.send(msg)
         logger.debug('Redirect client {}:{} to leader'.format(
                      *protocol.transport.get_extra_info('peername')))
@@ -98,8 +98,7 @@ class Follower(State):
         if hasattr(self, 'election_timer'):
             self.election_timer.cancel()
 
-        timeout = random.randrange(1, 4)
-        timeout = timeout * 10 ** (0 if self.config['debug'] else -1)
+        timeout = randrange(1, 4) * 10 ** (1 if config['debug'] else -1)
 
         loop = asyncio.get_event_loop()
         self.election_timer = loop.call_later(timeout,
@@ -177,7 +176,7 @@ class Candidate(Follower):
     def handle_peer_response_vote(self, peer_id, msg):
         self.votes_count += msg['voteGranted']
         logger.info('Vote count: {}'.format(self.votes_count))
-        if self.votes_count > len(self.config['cluster']) / 2:
+        if self.votes_count > len(config['cluster']) / 2:
             self.orchestrator.change_state(Leader)
 
 
@@ -187,7 +186,7 @@ class Leader(State):
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
         self.volatile['leaderId'] = self.volatile['Id']
         self.nextIndex = {x: self.log.commitIndex + 1
-                          for x in self.config['cluster']}
+                          for x in config['cluster']}
         self.send_append_entries()
         self.waiting_clients = {}
 
@@ -217,8 +216,7 @@ class Leader(State):
                                  self.nextIndex[peer_id]))
             self.orchestrator.send_peer(peer_id, msg)
 
-        timeout = random.randrange(1, 4)
-        timeout = timeout * 10 ** (-1 if self.config['debug'] else -2)
+        timeout = randrange(1, 4) * 10 ** (-1 if config['debug'] else -2)
         loop = asyncio.get_event_loop()
         self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
