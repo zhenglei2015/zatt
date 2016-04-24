@@ -33,8 +33,8 @@ class Orchestrator():
     def send_peer(self, peer_id, message):
         if peer_id == self.state.volatile['Id']:
             return
-        self.peer_transport.sendto(str(json.dumps(message)).encode(),
-                                   config.cluster[peer_id])
+        self.peer_transport.\
+            sendto(str(json.dumps(message)).encode(), config.cluster[peer_id])
 
     def broadcast_peers(self, message):
         for peer_id in config.cluster:
@@ -64,8 +64,8 @@ class ClientProtocol(asyncio.Protocol):
         self.orchestrator = orchestrator
 
     def connection_made(self, transport):
-        logger.debug('Established connection with client {}:{}'
-                     .format(*transport.get_extra_info('peername')))
+        logger.debug('Established connection with client %s:%s',
+                     *transport.get_extra_info('peername'))
         self.transport = transport
 
     def data_received(self, data):
@@ -73,8 +73,8 @@ class ClientProtocol(asyncio.Protocol):
         self.orchestrator.data_received_client(self, message)
 
     def connection_lost(self, exc):
-        logger.debug('Closed connection with client {}:{}'
-                     .format(*self.transport.get_extra_info('peername')))
+        logger.debug('Closed connection with client %s:%s',
+                     *self.transport.get_extra_info('peername'))
 
     def send(self, message):
         self.transport.write(json.dumps(message).encode())

@@ -5,9 +5,7 @@ import asyncio
 import logging
 from .config import config
 
-# logger = logging.getLogger(config['id'])
 logger = logging.getLogger(__name__)
-
 
 
 class Log(collections.UserList):
@@ -62,9 +60,8 @@ class Compactor():
 
     def persist(self):
         with open(self.path, 'w+') as f:
-            f.write(json.dumps({'count': self.count,
-                                'term': self.term,
-                                'data': self.data}))
+            raw = {'count': self.count, 'term': self.term, 'data': self.data}
+            f.write(json.dumps(raw))
 
 
 class DictStateMachine(collections.UserDict):
@@ -84,12 +81,11 @@ class DictStateMachine(collections.UserDict):
 
 
 class LogManager:
-    def __init__(self, machine=DictStateMachine, compact_count=0,
-                 compact_term=None, compact_data={}):
+    def __init__(self, compact_count=0, compact_term=None, compact_data={},
+                 machine=DictStateMachine):
         erase_log = compact_count or compact_term or compact_data
         self.log = Log(erase_log)
-        self.compacted = Compactor(compact_count, compact_term,
-                                   compact_data)
+        self.compacted = Compactor(compact_count, compact_term, compact_data)
         self.state_machine = machine(data=self.compacted.data,
                                      lastApplied=self.compacted.index)
         self.commitIndex = self.compacted.index + len(self.log)
@@ -120,18 +116,18 @@ class LogManager:
     def append_entries(self, entries, prevLogIndex):
         self.log.append_entries(entries, prevLogIndex - self.compacted.index)
         if entries:
-            logger.debug('Appending. New log: {}'.format(self.log.data))
+            logger.debug('Appending. New log: %s', self.log.data)
 
     def commit(self, leaderCommit):
         if leaderCommit <= self.commitIndex:
             return
 
         self.commitIndex = min(leaderCommit, self.index)  # no overshoots
-        logger.debug('Advancing commit to {}'.format(self.commitIndex))
-        # above is the real commit operation, just incrementing the counter!
+        logger.debug('Advancing commit to %s', self.commitIndex)
+        # above is the actual commit operation, just incrementing the counter!
         # the state machine application could be asynchronous
         self.state_machine.apply(self, self.commitIndex)
-        logger.debug('State machine: {}'.format(self.state_machine.data))
+        logger.debug('State machine: %s', self.state_machine.data)
         self.compaction_timer_touch()
 
     def compact(self):
@@ -146,8 +142,8 @@ class LogManager:
         self.compacted.persist()
         self.log.replace(not_compacted_log)
 
-        logger.debug('Compacted: {}'.format(self.compacted.data))
-        logger.debug('Log: {}'.format(self.log.data))
+        logger.debug('Compacted: %s', self.compacted.data)
+        logger.debug('Log: %s', self.log.data)
 
     def compaction_timer_touch(self):
         if not hasattr(self, 'compaction_timer'):

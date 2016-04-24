@@ -7,7 +7,7 @@ from logging.config import dictConfig
 
 def tick():
     logger = logging.getLogger(__name__)
-    logger.debug('Tick: ' + datetime.now().isoformat('T'))
+    logger.debug('Tick: %s', datetime.now().isoformat('T'))
     loop = asyncio.get_event_loop()
     loop.call_later(1, tick)
 
@@ -19,7 +19,7 @@ def start_logger():
         'formatters': {
             'prod': {'format': '{asctime}: {levelname}: {message}',
                      'style': '{'},
-            'develop': {'style': '{{message}}',
+            'develop': {'format': '{message}',
                         'style': '{'}
         },
         'handlers': {
@@ -33,7 +33,7 @@ def start_logger():
                  'propagate': True,
                  'extra': {'server_id': 1}}
             }
-    }
+        }
     if config.debug:
         logging_config['handlers']['console']['formatter'] = 'develop'
         logging_config['loggers']['']['level'] = 'DEBUG'

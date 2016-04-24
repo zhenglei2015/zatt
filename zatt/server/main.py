@@ -21,7 +21,7 @@ def setup(config={}):
                               *config.cluster[config.id])
     server = loop.run_until_complete(coro)
 
-    logger.info('Serving on {}'.format(config.cluster[config.id]))
+    logger.info('Serving on %s', config.cluster[config.id])
     return server
 
 
