@@ -1,21 +1,25 @@
 import asyncio
+import os
 import json
+import logging
 from .states import Follower
-from .logger import logger
+from .config import config
+
+logger = logging.getLogger(__name__)
 
 
 class Orchestrator():
-    def __init__(self, config):
-        self.config = config
-        self.state = Follower(config=self.config, orchestrator=self)
+    def __init__(self):
+        os.makedirs(config.storage, exist_ok=True)
+        self.state = Follower(orchestrator=self)
 
     def change_state(self, new_state):
         self.state.teardown()
         logger.info('State change:' + new_state.__name__)
-        self.state = new_state(config=self.config, old_state=self.state)
+        self.state = new_state(old_state=self.state)
 
     def data_received_peer(self, addr, message):
-        for peer_id, peer in self.config['cluster'].items():
+        for peer_id, peer in config.cluster.items():
             if peer == addr:
                 self.state.data_received_peer(peer_id, message)
                 break
@@ -30,10 +34,10 @@ class Orchestrator():
         if peer_id == self.state.volatile['Id']:
             return
         self.peer_transport.sendto(str(json.dumps(message)).encode(),
-                                   self.config['cluster'][peer_id])
+                                   config.cluster[peer_id])
 
     def broadcast_peers(self, message):
-        for peer_id in self.config['cluster']:
+        for peer_id in config.cluster:
             self.send_peer(peer_id, message)
 
 

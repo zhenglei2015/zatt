@@ -7,7 +7,7 @@ import json
 parser = argparse.ArgumentParser(description=('Zatt. An implementation of'
                                               'the Raft algorithm for '
                                               'distributed consensus'))
-parser.add_argument('-c', '--config', dest='path_config',
+parser.add_argument('-c', '--config', dest='path_conf',
                     help='Config file path. Default: zatt.conf')
 parser.add_argument('-i', '--id', help='This node ID. Default: 0', default=0)
 parser.add_argument('-a', '--address', help=('This node address. Default: '
@@ -23,46 +23,58 @@ parser.add_argument('--node-port', action='append', default=[],
                     help='Remote node port')
 parser.add_argument('--debug', action='store_true', help='Enable debug mode')
 
-args = parser.parse_args()
-if len(args.node_id) != len(args.node_port)\
-or len(args.node_id) != len(args.node_address):
-    print('There should be the same number of:node-id, node-address,',
-          'node-port')
-    sys.exit(1)
-if args.path_config is not None and not os.path.isfile(args.path_config):
-    print('Config file not found')
-    sys.exit(1)
 
-config = {'id':int(args.id), 'cluster': {}, 'debug':args.debug}
+class Config:
+    __shared_state = {}
 
-path = args.path_config if args.path_config else 'zatt.conf'
-if os.path.isfile(path):
-    with open(path, 'r') as f:
-        config.update(json.loads(f.read()))
+    def __new__(cls, *p, **k):
+        if '_instance' not in cls.__dict__:
+            cls._instance = object.__new__(cls)
+        return cls._instance
 
-if 'storage' not in config:
-    config['storage'] = 'zatt.persist'
+    def __init__(self, config={}):
+        self.__dict__ = config if config else self.get_from_cmdline_and_file()
 
-if args.path_storage:
-    config['storage'] = args.path_storage
+    def get_from_cmdline_and_file(self):
+        args = parser.parse_args()
+        if len(args.node_id) != len(args.node_port)\
+           or len(args.node_id) != len(args.node_address):
+            print('There should be the same number of:node-id, node-address,',
+                  'node-port')
+            sys.exit(1)
+        if args.path_conf is not None and not os.path.isfile(args.path_conf):
+            print('Config file not found')
+            sys.exit(1)
 
-if not os.path.isdir(config['storage']):
-    os.mkdir(config['storage'])
+        config = {'id': int(args.id), 'cluster': {}, 'debug': args.debug}
 
-for x in zip(args.node_id, args.node_address, args.node_port):
-    config['cluster'][x[0]] = x[1:3]
+        path = args.path_conf if args.path_conf else 'zatt.conf'
+        if os.path.isfile(path):
+            with open(path, 'r') as f:
+                config.update(json.loads(f.read()))
 
-if args.address:
-    config['cluster'][config['id']][0] = args.address
+        if 'storage' not in config:
+            config['storage'] = 'zatt.persist'
 
-if args.port:
-    config['cluster'][config['id']][1] = args.port
+        if args.path_storage:
+            config['storage'] = args.path_storage
 
-cluster = config['cluster']
-config['cluster'] = {}
-config['cluster'] = {int(k):(v[0], int(v[1])) for (k,v) in cluster.items()}
+        for x in zip(args.node_id, args.node_address, args.node_port):
+            config['cluster'][x[0]] = x[1:3]
 
-if config['id'] not in config['cluster']:
-    config['cluster'][config['id']] = ['127.0.0.1', '5254']
+        if args.address:
+            config['cluster'][config['id']][0] = args.address
 
-__all__ = ['config']
+        if args.port:
+            config['cluster'][config['id']][1] = args.port
+
+        cluster = config['cluster']
+        config['cluster'] = {int(k): (v[0], int(v[1]))
+                             for (k, v) in cluster.items()}
+
+        if config['id'] not in config['cluster']:
+            config['cluster'][config['id']] = ['127.0.0.1', '5254']
+
+        return config
+
+config = Config()

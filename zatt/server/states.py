@@ -1,15 +1,17 @@
 import asyncio
+import logging
 from random import randrange
 from os.path import join
 from collections import Counter, OrderedDict
 from .utils import PersistentDict
 from .log import LogManager
-from .logger import logger
+from .config import config
+
+logger = logging.getLogger(__name__)
 
 
 class State:
-    def __init__(self, config, old_state=None, orchestrator=None):
-        self.config = config
+    def __init__(self, old_state=None, orchestrator=None):
         if old_state:
             self.orchestrator = old_state.orchestrator
             self.persist = old_state.persist
@@ -17,11 +19,11 @@ class State:
             self.log = old_state.log
         else:
             self.orchestrator = orchestrator
-            self.persist = PersistentDict(join(self.config['storage'],
+            self.persist = PersistentDict(join(config.storage,
                                                'state'),
                                           {'votedFor': None, 'currentTerm': 0})
-            self.volatile = {'leaderId': None, 'Id': self.config['id']}
-            self.log = LogManager(config=self.config)
+            self.volatile = {'leaderId': None, 'Id': config.id}
+            self.log = LogManager()
 
     def data_received_peer(self, peer_id, msg):
         logger.debug('Received {} from {}'.format(msg['type'], peer_id))
@@ -52,7 +54,7 @@ class State:
 
     def handle_client_append(self, protocol, msg):
         msg = {'type': 'redirect',
-               'leader': self.config['cluster'][self.volatile['leaderId']]}
+               'leader': config.cluster[self.volatile['leaderId']]}
         protocol.send(msg)
         logger.debug('Redirect client {}:{} to leader'.format(
                      *protocol.transport.get_extra_info('peername')))
@@ -74,7 +76,7 @@ class State:
 
         for filename in ['state', 'log', 'compact']:
             try:
-                with open(join(self.config['storage'], filename), 'r') as f:
+                with open(join(config.storage, filename), 'r') as f:
                     msg['files'][filename] = f.read()
             except FileNotFoundError:
                 msg['files'][filename] = None
@@ -87,8 +89,8 @@ class State:
 
 
 class Follower(State):
-    def __init__(self, config, old_state=None, orchestrator=None):
-        super().__init__(config, old_state, orchestrator)
+    def __init__(self, old_state=None, orchestrator=None):
+        super().__init__(old_state, orchestrator)
         self.persist['votedFor'] = None
         self.restart_election_timer()
 
@@ -99,7 +101,7 @@ class Follower(State):
         if hasattr(self, 'election_timer'):
             self.election_timer.cancel()
 
-        timeout = randrange(1, 4) * 10 ** (1 if self.config['debug'] else -1)
+        timeout = randrange(1, 4) * 10 ** (0 if config.debug else -1)
 
         loop = asyncio.get_event_loop()
         self.election_timer = loop.call_later(timeout,
@@ -135,8 +137,7 @@ class Follower(State):
         if 'compact_data' in msg:
             self.log = LogManager(compact_count=msg['compact_count'],
                                   compact_term=msg['compact_term'],
-                                  compact_data=msg['compact_data'],
-                                  config=self.config)
+                                  compact_data=msg['compact_data'])
             self.volatile['leaderId'] = msg['leaderId']
             logger.debug('Initialized Log with compact data from Leader')
         elif success:
@@ -154,8 +155,8 @@ class Follower(State):
 
 
 class Candidate(Follower):
-    def __init__(self, config, old_state=None, orchestrator=None):
-        super().__init__(config, old_state, orchestrator)
+    def __init__(self, old_state=None, orchestrator=None):
+        super().__init__(old_state, orchestrator)
         self.persist['currentTerm'] += 1
         self.persist['votedFor'] = self.volatile['Id']
         self.votes_count = 1
@@ -178,17 +179,17 @@ class Candidate(Follower):
     def handle_peer_response_vote(self, peer_id, msg):
         self.votes_count += msg['voteGranted']
         logger.info('Vote count: {}'.format(self.votes_count))
-        if self.votes_count > len(self.config['cluster']) / 2:
+        if self.votes_count > len(config.cluster) / 2:
             self.orchestrator.change_state(Leader)
 
 
 class Leader(State):
-    def __init__(self, config, old_state=None, orchestrator=None):
-        super().__init__(config, old_state, orchestrator)
+    def __init__(self, old_state=None, orchestrator=None):
+        super().__init__(old_state, orchestrator)
         logger.info('Leader of term: {}'.format(self.persist['currentTerm']))
         self.volatile['leaderId'] = self.volatile['Id']
         self.nextIndex = {x: self.log.commitIndex + 1
-                          for x in self.config['cluster']}
+                          for x in config.cluster}
         self.send_append_entries()
         self.waiting_clients = {}
 
@@ -196,7 +197,7 @@ class Leader(State):
         self.append_timer.cancel()
 
     def send_append_entries(self):
-        for peer_id in self.config['cluster']:
+        for peer_id in config.cluster:
             if peer_id == self.volatile['Id']:
                 continue
             msg = {'type': 'append_entries',
@@ -218,7 +219,7 @@ class Leader(State):
                                  self.nextIndex[peer_id]))
             self.orchestrator.send_peer(peer_id, msg)
 
-        timeout = randrange(1, 4) * 10 ** (-1 if self.config['debug'] else -2)
+        timeout = randrange(1, 4) * 10 ** (-1 if config.debug else -2)
         loop = asyncio.get_event_loop()
         self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
@@ -231,7 +232,7 @@ class Leader(State):
         total = 0
         for index, count in index_counter.items():
             total += count
-            if total / len(self.config['cluster']) > 0.5:
+            if total / len(config.cluster) > 0.5:
                 self.log.commit(index)
                 self.send_client_append_response()
                 break

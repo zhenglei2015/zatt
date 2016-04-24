@@ -2,29 +2,42 @@ import logging
 import asyncio
 from datetime import datetime
 from .config import config
+from logging.config import dictConfig
 
 
 def tick():
+    logger = logging.getLogger(__name__)
     logger.debug('Tick: ' + datetime.now().isoformat('T'))
     loop = asyncio.get_event_loop()
     loop.call_later(1, tick)
 
-if config['debug']:
-    formatter_patten = '%(app_name)s %(message)s'
 
-    logLevel = logging.DEBUG
-    loop = asyncio.get_event_loop()
-    loop.call_later(1, tick)
-else:
-    logLevel = logging.INFO
-    formatter_patten = '%(asctime)s %(message)s'
+def start_logger():
+    logging_config = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'prod': {'format': '{asctime}: {levelname}: {message}',
+                     'style': '{'},
+            'develop': {'style': '{{message}}',
+                        'style': '{'}
+        },
+        'handlers': {
+            'console': {'class': 'logging.StreamHandler',
+                        'formatter': 'prod',
+                        'level': 'DEBUG'}
+            },
+        'loggers': {
+            '': {'handlers': ['console'],
+                 'level': 'INFO',
+                 'propagate': True,
+                 'extra': {'server_id': 1}}
+            }
+    }
+    if config.debug:
+        logging_config['handlers']['console']['formatter'] = 'develop'
+        logging_config['loggers']['']['level'] = 'DEBUG'
+        loop = asyncio.get_event_loop()
+        loop.call_later(1, tick)
 
-logger = logging.getLogger(__name__)
-syslog = logging.StreamHandler()
-formatter = logging.Formatter(formatter_patten)
-syslog.setFormatter(formatter)
-logger.setLevel(logLevel)
-logger.addHandler(syslog)
-
-extra = {'app_name': config['id']}
-logger = logging.LoggerAdapter(logger, extra)
+    dictConfig(logging_config)
