@@ -1,1 +1,1 @@
-from distributedDict import DistributedDict
+from .distributedDict import DistributedDict
