@@ -12,6 +12,7 @@ class Pool:
         self._generate_configs(server_ids)
         self.servers = {}
         for config in self.configs.values():
+            print('Generating server', config['id'])
             self.servers[config['id']] = (Process(target=self._run_server,
                                                   args=(config,)))
 
@@ -19,12 +20,14 @@ class Pool:
         if type(n) is int:
             n = [n]
         for x in n:
+            print('Starting server', x)
             self.servers[x].start()
 
     def stop(self, n):
         if type(n) is int:
             n = [n]
         for x in n:
+            print('Stopping server', x)
             if self.running[x]:
                 self.servers[x].terminate()
                 self.servers[x] = Process(target=self._run_server,
@@ -35,6 +38,7 @@ class Pool:
             n = [n]
         for x in n:
             shutil.rmtree(self.configs[x]['storage'])
+            print('Removing files related to server', x)
 
     @property
     def running(self):
@@ -43,10 +47,6 @@ class Pool:
     @property
     def ids(self):
         return list(self.configs.keys())
-
-    def __del__(self):
-        self.stop(self.ids)
-        self.rm(self.ids)
 
     def _generate_configs(self, server_ids):
         shared = {'cluster': {}, 'storage': 'zatt.{}.persist',
