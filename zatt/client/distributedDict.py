@@ -6,7 +6,11 @@ class DistributedDict(collections.UserDict, AbstractClient):
     def __init__(self, addr, port):
         super().__init__()
         self.target = (addr, port)
-        self.get_state()
+        self.data = self.get_state()
+
+    def __getitem__(self, key):
+        self.data = self.get_state()
+        return self.data[key]
 
     def __setitem__(self, key, value):
         if type(key) != str:

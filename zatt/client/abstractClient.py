@@ -28,7 +28,7 @@ class AbstractClient:
 
     def get_state(self):
         """Retrive remote state machine"""
-        self.data = self._request({'type': 'get'})
+        return self._request({'type': 'get'})
 
     def append_log(self, payload):
         """Append to remote log"""
