@@ -80,9 +80,20 @@ class DictStateMachine(collections.UserDict):
                 del self.data[item['key']]
 
 
+class PickleStateMachine():
+    def __init__(self, data={}, lastApplied=0):
+        self.lastApplied = lastApplied
+        self.data = data
+
+    def apply(self, items, end):
+        items = items[self.lastApplied + 1:end + 1]
+        if items:
+            self.data = items[-1]
+
+
 class LogManager:
     def __init__(self, compact_count=0, compact_term=None, compact_data={},
-                 machine=DictStateMachine):
+                 machine=PickleStateMachine):
         erase_log = compact_count or compact_term or compact_data
         self.log = Log(erase_log)
         self.compacted = Compactor(compact_count, compact_term, compact_data)
