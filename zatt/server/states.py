@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import statistics
 from random import randrange
 from os.path import join
 from collections import Counter, OrderedDict
@@ -219,15 +220,9 @@ class Leader(State):
         self.nextIndex[peer_id] = msg['next_index']
 
         self.nextIndex[self.volatile['Id']] = self.log.index + 1
-        index_counter = Counter(map(lambda x: x-1, self.nextIndex.values()))
-        index_counter = OrderedDict(reversed(sorted(index_counter.items())))
-        total_peers_count = 0
-        for index, count in index_counter.items():
-            total_peers_count += count
-            if total_peers_count / len(config.cluster) > 0.5:
-                self.log.commit(index)
-                self.send_client_append_response()
-                break
+        index = statistics.median(self.nextIndex.values()) - 1
+        self.log.commit(index)
+        self.send_client_append_response()
 
     def handle_client_append(self, protocol, msg):
         entry = {'term': self.persist['currentTerm'], 'data': msg['data']}
