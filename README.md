@@ -32,7 +32,7 @@ At this point `$ zattd --help` should work.
 
 This screencast shows what will be explained below:
 
-<script type="text/javascript" src="https://asciinema.org/a/7o8bpyfxh0r1uaxvpfi7u8tjl.js" id="asciicast-7o8bpyfxh0r1uaxvpfi7u8tjl" async></script>
+[![asciicast](https://asciinema.org/a/7o8bpyfxh0r1uaxvpfi7u8tjl.png)](https://asciinema.org/a/7o8bpyfxh0r1uaxvpfi7u8tjl)
 
 
 ### Spinning up a cluster of servers
