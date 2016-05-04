@@ -3,18 +3,29 @@
 Zatt is a distributed storage system built on the [Raft](https://raft.github.io/)
 consensus algorithm.
 
-The **server** is a standalone application and is therefore *python3-only*.
-The **client** instead is compatible with both major versions of python.
+By default, clients share a `dict` data structure, although every python object
+is potentially replicable with the `pickle` state machine.
+
+Please note that the **client** is compatible with both `python2` and `python3`,
+while the **server** makes heavy use of the asynchronous programming library
+`asyncio` and is therefore python3-only. This won't affect compatibility with
+legacy code since the server is standalone.
+
+## Structure of the project
+
+The most relevant part of the code concerning Raft is in the [states](https://github.com/simonacca/zatt/blob/develop/zatt/server/states.py) and in the [log](https://github.com/simonacca/zatt/blob/develop/zatt/server/log.py) files.
+
+TODO: extend
 
 ## Installing
-Both the server and the client are shipped in the same [package](https://pypi.python.org/pypi/raft/) (Note: this link won't work until the project is public).
+Both the server and the client are shipped in the same
+[package](https://pypi.python.org/pypi/raft/)
+(Note: this link won't work until the project is public).
 
 Zatt can be installed by several means:
 
 ### Pypi
 `$ pip3 install zatt`. (Note: this won't work until the project is public).
-
-(use `pip2` if you want to install in python2)
 
 ### Pip and Git
 `$ pip3 install git+ssh://github.com/simonacca/zatt.git@develop`
@@ -23,14 +34,15 @@ Zatt can be installed by several means:
 ```
 $ git clone git@github.com:simonacca/zatt.git
 $ cd zatt
+$ git checkout develop
 $ python3 setup.py install
 ```
 
-At this point `$ zattd --help` should work.
+Regardless of the installation method, `$ zattd --help` should work at this point.
 
 ## Examples
 
-This screencast shows what will be explained below:
+This screencast shows a basic usage of the code. The code run can be found below.
 
 [![asciicast](https://asciinema.org/a/7o8bpyfxh0r1uaxvpfi7u8tjl.png)](https://asciinema.org/a/7o8bpyfxh0r1uaxvpfi7u8tjl)
 
@@ -88,7 +100,7 @@ In [4]: d
 Out[4]: {'key1': 0}
 ```
 
-### Remarks
+### Notes
 
 Please note that in order to erase the log of a node, the corresponding `zatt.{id}.persist` folder has to be removed.
 
