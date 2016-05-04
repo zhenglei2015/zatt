@@ -32,6 +32,9 @@ At this point `$ zattd --help` should work.
 
 This screencast shows what will be explained below:
 
+<script type="text/javascript" src="https://asciinema.org/a/7o8bpyfxh0r1uaxvpfi7u8tjl.js" id="asciicast-7o8bpyfxh0r1uaxvpfi7u8tjl" async></script>
+
+
 ### Spinning up a cluster of servers
 
 A server can be configured with command-line options or with a config file,
@@ -58,7 +61,7 @@ This tells zattd to run the node with `id:0`, taking the info about address and 
 
 Now you can spin up a second node: open another terminal, navigate to `zatt_cluster` and issue:
 
-`$ zattd -c zatt.conf --id 1 -s zatt.1.persist --debug`
+`$ zattd -c zatt.conf --id 2 -s zatt.2.persist --debug`
 
 Repeat for a third node, this time with `id:2`
 
