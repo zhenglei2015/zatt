@@ -143,8 +143,9 @@ class Follower(State):
             logger.warning('Couldnt append entries. cause: %s', 'wrong\
                 term' if not term_is_current else 'prev log term mismatch')
 
-        resp = {'type': 'response_append', 'next_index': self.log.index + 1,
-                'term': self.persist['currentTerm']}
+        resp = {'type': 'response_append', 'success': success,
+                'term': self.persist['currentTerm'],
+                'matchIndex': self.log.index}
         self.orchestrator.send_peer(peer_id, resp)
 
 
@@ -183,6 +184,7 @@ class Leader(State):
         logger.info('Leader of term: %s', self.persist['currentTerm'])
         self.volatile['leaderId'] = self.volatile['Id']
         self.nextIndex = {x: self.log.commitIndex + 1 for x in config.cluster}
+        self.matchIndex = {x: 0 for x in config.cluster}
         self.send_append_entries()
         self.waiting_clients = {}
 
@@ -216,12 +218,16 @@ class Leader(State):
         self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
     def on_peer_response_append(self, peer_id, msg):
-        self.nextIndex[peer_id] = msg['next_index']
+        if msg['success']:
+            self.matchIndex[peer_id] = msg['matchIndex']
+            self.nextIndex[peer_id] = msg['matchIndex'] + 1
 
-        self.nextIndex[self.volatile['Id']] = self.log.index + 1
-        index = statistics.median(self.nextIndex.values()) - 1
-        self.log.commit(index)
-        self.send_client_append_response()
+            self.nextIndex[self.volatile['Id']] = self.log.index + 1
+            index = int(statistics.median(self.nextIndex.values()) - 1)
+            self.log.commit(index)
+            self.send_client_append_response()
+        else:
+            self.nextIndex[peer_id] = max(0, self.nextIndex[peer_id] - 1)
 
     def on_client_append(self, protocol, msg):
         entry = {'term': self.persist['currentTerm'], 'data': msg['data']}
