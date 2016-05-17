@@ -107,7 +107,8 @@ class Follower(State):
         self.restart_election_timer()
         term_is_current = msg['term'] >= self.persist['currentTerm']
         can_vote = self.persist['votedFor'] in [None, msg['candidateId']]
-        index_is_current = msg['lastLogIndex'] >= self.log.index
+        index_is_current = (msg['lastLogTerm'] > self.log.term() or
+        (msg['lastLogTerm'] == self.log.term() and msg['lastLogIndex'] >= self.log.index))
         granted = term_is_current and can_vote and index_is_current
 
         if granted:

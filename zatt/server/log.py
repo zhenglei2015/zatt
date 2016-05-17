@@ -107,7 +107,7 @@ class LogManager:
         if index is None:
             return self.term(self.index)
         elif index == -1:
-            return None
+            return 0
         elif not len(self.log) or index <= self.compacted.index:
             return self.compacted.term
         else:
