@@ -50,7 +50,7 @@ class Pool:
 
     def _generate_configs(self, server_ids):
         shared = {'cluster': {}, 'storage': 'zatt.{}.persist',
-                  'id': None, 'debug': False}
+                'id': None, 'debug': False, 'save':False}
 
         for server_id in server_ids:
             shared['cluster'][server_id] = ('127.0.0.1', 9110 + server_id)
@@ -63,6 +63,7 @@ class Pool:
             self.configs[server_id] = config
 
     def _run_server(self, config):
+        print(config)
         setup(config)
         loop = asyncio.get_event_loop()
         loop.run_forever()

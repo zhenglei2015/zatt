@@ -16,8 +16,9 @@ parser.add_argument('--save', action='store_true', help='Save config to'
                     ' persistence directory')
 parser.add_argument('-i', '--id', help='This node ID. Default: 0', default=0)
 parser.add_argument('-a', '--address', help=('This node address. Default: '
-                    '127.0.0.1'))
-parser.add_argument('-p', '--port', help='This node port. Default: 5254')
+                    '127.0.0.1'), default='127.0.0.1')
+parser.add_argument('-p', '--port', help='This node port. Default: 5254',
+                    default=5254)
 parser.add_argument('--remote-id', action='append', default=[],
                     help='Remote node id')
 parser.add_argument('--remote-address', action='append', default=[],
@@ -81,7 +82,7 @@ class Config:
         config['cluster'].update(cmdline['cluster'])
         del cmdline['cluster']
         config.update(cmdline)
-
+        print(config)
         config['cluster'] = {int(k): (v[0], int(v[1]))
                              for (k, v) in config['cluster'].items()}
 
