@@ -3,7 +3,6 @@ import logging
 import statistics
 from random import randrange
 from os.path import join
-from collections import Counter, OrderedDict
 from .utils import PersistentDict
 from .log import LogManager
 from .config import config
@@ -36,31 +35,31 @@ class State:
                 self.orchestrator.state.data_received_peer(peer_id, msg)
                 return
         else:
-            method = getattr(self, 'handle_peer_' + msg['type'], None)
+            method = getattr(self, 'on_peer_' + msg['type'], None)
             if method:
                 method(peer_id, msg)
             else:
                 logger.info('Unrecognized message from %s: %s', peer_id, msg)
 
     def data_received_client(self, protocol, msg):
-        method = getattr(self, 'handle_client_' + msg['type'], None)
+        method = getattr(self, 'on_client_' + msg['type'], None)
         if method:
             method(protocol, msg)
         else:
             logger.info('Unrecognized msg from %s: %s',
                         protocol.transport.get_extra_info('peername'), msg)
 
-    def handle_client_append(self, protocol, msg):
+    def on_client_append(self, protocol, msg):
         msg = {'type': 'redirect',
                'leader': config.cluster[self.volatile['leaderId']]}
         protocol.send(msg)
         logger.debug('Redirect client %s:%s to leader',
                      *protocol.transport.get_extra_info('peername'))
 
-    def handle_client_get(self, protocol, msg):
+    def on_client_get(self, protocol, msg):
         protocol.send(self.log.state_machine.data)
 
-    def handle_client_diagnostic(self, protocol, msg):
+    def on_client_diagnostic(self, protocol, msg):
         msg = {'status': self.__class__.__name__,
                'persist': {'votedFor': self.persist['votedFor'],
                            'currentTerm': self.persist['currentTerm']},
@@ -104,24 +103,24 @@ class Follower(State):
             call_later(timeout, self.orchestrator.change_state, Candidate)
         logger.debug('Election timer restarted: %s s', timeout)
 
-    def handle_peer_request_vote(self, peer_id, msg):
+    def on_peer_request_vote(self, peer_id, msg):
         self.restart_election_timer()
         term_is_current = msg['term'] >= self.persist['currentTerm']
         can_vote = self.persist['votedFor'] in [None, msg['candidateId']]
         index_is_current = msg['lastLogIndex'] >= self.log.index
-        vote = term_is_current and can_vote and index_is_current
+        granted = term_is_current and can_vote and index_is_current
 
-        if vote:
+        if granted:
             self.persist['votedFor'] = msg['candidateId']
 
         logger.debug('Voting for %s. Term:%s Vote:%s Index:%s',
                      peer_id, term_is_current, can_vote, index_is_current)
 
-        response = {'type': 'response_vote', 'voteGranted': vote,
+        response = {'type': 'response_vote', 'voteGranted': granted,
                     'term': self.persist['currentTerm']}
         self.orchestrator.send_peer(peer_id, response)
 
-    def handle_peer_append_entries(self, peer_id, msg):
+    def on_peer_append_entries(self, peer_id, msg):
         self.restart_election_timer()
 
         term_is_current = msg['term'] >= self.persist['currentTerm']
@@ -166,12 +165,12 @@ class Candidate(Follower):
                'lastLogTerm': self.log.term()}
         self.orchestrator.broadcast_peers(msg)
 
-    def handle_peer_append_entries(self, peer_id, msg):
+    def on_peer_append_entries(self, peer_id, msg):
         logger.debug('Converting to Follower')
         self.orchestrator.change_state(Follower)
-        self.orchestrator.state.handle_peer_append_entries(peer_id, msg)
+        self.orchestrator.state.on_peer_append_entries(peer_id, msg)
 
-    def handle_peer_response_vote(self, peer_id, msg):
+    def on_peer_response_vote(self, peer_id, msg):
         self.votes_count += msg['voteGranted']
         logger.info('Vote count: %s', self.votes_count)
         if self.votes_count > len(config.cluster) / 2:
@@ -216,7 +215,7 @@ class Leader(State):
         loop = asyncio.get_event_loop()
         self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
-    def handle_peer_response_append(self, peer_id, msg):
+    def on_peer_response_append(self, peer_id, msg):
         self.nextIndex[peer_id] = msg['next_index']
 
         self.nextIndex[self.volatile['Id']] = self.log.index + 1
@@ -224,7 +223,7 @@ class Leader(State):
         self.log.commit(index)
         self.send_client_append_response()
 
-    def handle_client_append(self, protocol, msg):
+    def on_client_append(self, protocol, msg):
         entry = {'term': self.persist['currentTerm'], 'data': msg['data']}
         self.log.append_entries([entry], self.log.index)
         if self.log.index in self.waiting_clients:
