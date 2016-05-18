@@ -224,7 +224,7 @@ class Leader(State):
             self.nextIndex[peer_id] = msg['matchIndex'] + 1
 
             self.nextIndex[self.volatile['Id']] = self.log.index + 1
-            index = int(statistics.median(self.nextIndex.values()) - 1)
+            index = int(statistics.median(self.matchIndex.values()))
             self.log.commit(index)
             self.send_client_append_response()
         else:
