@@ -13,16 +13,15 @@ def setup(config={}):
     loop = asyncio.get_event_loop()
     orchestrator = Orchestrator()
     coro = loop.create_datagram_endpoint(lambda: PeerProtocol(orchestrator),
-                                         local_addr=(config.address,
-                                                     config.port))
+                                         local_addr=config.address)
     transport, _ = loop.run_until_complete(coro)
     orchestrator.peer_transport = transport
 
     coro = loop.create_server(lambda: ClientProtocol(orchestrator),
-                              config.address, config.port)
+                              *config.address)
     server = loop.run_until_complete(coro)
 
-    logger.info('Serving on %s:%s', config.address, config.port)
+    logger.info('Serving on %s', config.address)
     return server
 
 

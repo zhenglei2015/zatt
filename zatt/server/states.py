@@ -22,15 +22,9 @@ class State:
             self.persist = PersistentDict(join(config.storage, 'state'),
                                           {'votedFor': None, 'currentTerm': 0})
             self.volatile = {'leaderId': None, 'cluster': config.cluster,
-                             'address': (config.address, int(config.port))}
+                             'address': config.address}
             self.log = LogManager()
-            if 'cluster' in self.log.compacted.data:
-                self.volatile['cluster'] = self.log.compacted.data['cluster']
-            for entry in self.log:
-                if entry['data']['key'] == 'cluster':
-                    self.volatile['cluster'] = entry['data']['value']
-            self.volatile['cluster'] = tuple(map(tuple,
-                                                 self.volatile['cluster']))
+            self._update_cluster()
 
     def data_received_peer(self, peer, msg):
         logger.debug('Received %s from %s', msg['type'], peer)
@@ -64,6 +58,9 @@ class State:
         logger.debug('Redirect client %s:%s to leader',
                      *protocol.transport.get_extra_info('peername'))
 
+    def on_client_config(self, protocol, msg):
+        return self.on_client_append(protocol, msg)
+
     def on_client_get(self, protocol, msg):
         state_machine = self.log.state_machine.data.copy()
         if 'cluster' in state_machine:
@@ -95,6 +92,14 @@ class State:
                             {'netIndex': tuple(self.nextIndex.items()),
                              'matchIndex': tuple(self.matchIndex.items())}})
         protocol.send(msg)
+
+    def _update_cluster(self, entries=None):
+        if 'cluster' in self.log.compacted.data:
+            self.volatile['cluster'] = self.log.compacted.data['cluster']
+        for entry in (self.log if entries is None else entries):
+            if entry['data']['key'] == 'cluster':
+                self.volatile['cluster'] = entry['data']['value']
+        self.volatile['cluster'] = tuple(map(tuple, self.volatile['cluster']))
 
 
 class Follower(State):
@@ -155,14 +160,10 @@ class Follower(State):
             self.volatile['leaderId'] = msg['leaderId']
             logger.debug('Log index is now %s', self.log.index)
         else:
-            logger.warning('Couldnt append entries. cause: %s', 'wrong\
+            logger.warning('Could not append entries. cause: %s', 'wrong\
                 term' if not term_is_current else 'prev log term mismatch')
 
-        for entry in self.log:
-            if entry['data']['key'] == 'cluster':
-                self.volatile['cluster'] = entry['data']['value']
-        self.volatile['cluster'] = tuple(map(tuple,
-                                             self.volatile['cluster']))
+        self._update_cluster()
 
         resp = {'type': 'response_append', 'success': success,
                 'term': self.persist['currentTerm'],
@@ -176,7 +177,7 @@ class Candidate(Follower):
         self.persist['currentTerm'] += 1
         self.persist['votedFor'] = self.volatile['address']
         self.votes_count = 1
-        logger.info('New Election. Term: '+str(self.persist['currentTerm']))
+        logger.info('New Election. Term: %s', self.persist['currentTerm'])
         self.send_vote_requests()
 
     def send_vote_requests(self):
@@ -271,20 +272,25 @@ class Leader(State):
             del self.waiting_clients[client_index]
 
     def on_client_config(self, protocol, msg):
+        success = True
         cluster = set(self.volatile['cluster'])
         peer = (msg['address'], int(msg['port']))
-        if msg['action'] == 'add':
+        if msg['action'] == 'add' and peer not in cluster:
+            logger.info('Adding node %s', peer)
             cluster.add(peer)
             self.nextIndex[peer] = 0
             self.matchIndex[peer] = 0
-        elif msg['action'] == 'delete':
+        elif msg['action'] == 'delete' and peer in cluster:
+            logger.info('Removing node %s', peer)
             cluster.remove(peer)
             del self.nextIndex[peer]
             del self.matchIndex[peer]
+        else:
+            success = False
         self.log.append_entries([
             {'term': self.persist['currentTerm'],
              'data':{'key': 'cluster', 'value': tuple(cluster),
                      'action': 'change'}}],
             self.log.index)
         self.volatile['cluster'] = cluster
-        protocol.send({'type': 'result', 'success': True})
+        protocol.send({'type': 'result', 'success': success})
