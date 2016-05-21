@@ -21,55 +21,66 @@ class State:
             self.orchestrator = orchestrator
             self.persist = PersistentDict(join(config.storage, 'state'),
                                           {'votedFor': None, 'currentTerm': 0})
-            self.volatile = {'leaderId': None, 'Id': config.id}
+            self.volatile = {'leaderId': None, 'cluster': config.cluster,
+                             'address': (config.address, int(config.port))}
             self.log = LogManager()
+            if 'cluster' in self.log.compacted.data:
+                self.volatile['cluster'] = self.log.compacted.data['cluster']
+            for entry in self.log:
+                if entry['data']['key'] == 'cluster':
+                    self.volatile['cluster'] = entry['data']['value']
+            self.volatile['cluster'] = tuple(map(tuple,
+                                                 self.volatile['cluster']))
 
-    def data_received_peer(self, peer_id, msg):
-        logger.debug('Received %s from %s', msg['type'], peer_id)
+    def data_received_peer(self, peer, msg):
+        logger.debug('Received %s from %s', msg['type'], peer)
 
         if msg['term'] > self.persist['currentTerm']:
             self.persist['currentTerm'] = msg['term']
             if not type(self) is Follower:
                 logger.info('Remote term is higher, converting to Follower')
                 self.orchestrator.change_state(Follower)
-                self.orchestrator.state.data_received_peer(peer_id, msg)
+                self.orchestrator.state.data_received_peer(peer, msg)
                 return
         else:
             method = getattr(self, 'on_peer_' + msg['type'], None)
             if method:
-                method(peer_id, msg)
+                method(peer, msg)
             else:
-                logger.info('Unrecognized message from %s: %s', peer_id, msg)
+                logger.info('Unrecognized message from %s: %s', peer, msg)
 
     def data_received_client(self, protocol, msg):
         method = getattr(self, 'on_client_' + msg['type'], None)
         if method:
             method(protocol, msg)
         else:
-            logger.info('Unrecognized msg from %s: %s',
+            logger.info('Unrecognized message from %s: %s',
                         protocol.transport.get_extra_info('peername'), msg)
 
     def on_client_append(self, protocol, msg):
         msg = {'type': 'redirect',
-               'leader': config.cluster[self.volatile['leaderId']]}
+               'leader': self.volatile['leaderId']}
         protocol.send(msg)
         logger.debug('Redirect client %s:%s to leader',
                      *protocol.transport.get_extra_info('peername'))
 
     def on_client_get(self, protocol, msg):
-        protocol.send(self.log.state_machine.data)
+        state_machine = self.log.state_machine.data.copy()
+        if 'cluster' in state_machine:
+            del state_machine['cluster']
+        protocol.send(state_machine)
 
     def on_client_diagnostic(self, protocol, msg):
         msg = {'status': self.__class__.__name__,
                'persist': {'votedFor': self.persist['votedFor'],
                            'currentTerm': self.persist['currentTerm']},
-               'volatile': {'leaderId': self.volatile['leaderId'],
-                            'Id': self.volatile['Id']},
+               'volatile': self.volatile,
                'log': {'commitIndex': self.log.commitIndex,
                        'log': self.log.log.__dict__,
                        'state_machine': self.log.state_machine.__dict__,
                        'compacted': self.log.compacted.__dict__},
                'files': {}}
+        msg['volatile']['cluster'] = list(msg['volatile']['cluster'])
 
         for filename in ['state', 'log', 'compact']:
             try:
@@ -79,8 +90,10 @@ class State:
                 msg['files'][filename] = None
 
         if type(self) is Leader:
-            msg.update({'leaderStatus': {'netIndex': self.nextIndex,
-                        'waiting_clients': self.waiting_clients}})
+            msg.update({'waiting_clients': self.waiting_clients,
+                        'leaderStatus':
+                            {'netIndex': tuple(self.nextIndex.items()),
+                             'matchIndex': tuple(self.matchIndex.items())}})
         protocol.send(msg)
 
 
@@ -103,25 +116,26 @@ class Follower(State):
             call_later(timeout, self.orchestrator.change_state, Candidate)
         logger.debug('Election timer restarted: %s s', timeout)
 
-    def on_peer_request_vote(self, peer_id, msg):
+    def on_peer_request_vote(self, peer, msg):
         self.restart_election_timer()
         term_is_current = msg['term'] >= self.persist['currentTerm']
         can_vote = self.persist['votedFor'] in [None, msg['candidateId']]
         index_is_current = (msg['lastLogTerm'] > self.log.term() or
-        (msg['lastLogTerm'] == self.log.term() and msg['lastLogIndex'] >= self.log.index))
+                            (msg['lastLogTerm'] == self.log.term() and
+                             msg['lastLogIndex'] >= self.log.index))
         granted = term_is_current and can_vote and index_is_current
 
         if granted:
             self.persist['votedFor'] = msg['candidateId']
 
         logger.debug('Voting for %s. Term:%s Vote:%s Index:%s',
-                     peer_id, term_is_current, can_vote, index_is_current)
+                     peer, term_is_current, can_vote, index_is_current)
 
         response = {'type': 'response_vote', 'voteGranted': granted,
                     'term': self.persist['currentTerm']}
-        self.orchestrator.send_peer(peer_id, response)
+        self.orchestrator.send_peer(peer, response)
 
-    def on_peer_append_entries(self, peer_id, msg):
+    def on_peer_append_entries(self, peer, msg):
         self.restart_election_timer()
 
         term_is_current = msg['term'] >= self.persist['currentTerm']
@@ -144,17 +158,23 @@ class Follower(State):
             logger.warning('Couldnt append entries. cause: %s', 'wrong\
                 term' if not term_is_current else 'prev log term mismatch')
 
+        for entry in self.log:
+            if entry['data']['key'] == 'cluster':
+                self.volatile['cluster'] = entry['data']['value']
+        self.volatile['cluster'] = tuple(map(tuple,
+                                             self.volatile['cluster']))
+
         resp = {'type': 'response_append', 'success': success,
                 'term': self.persist['currentTerm'],
                 'matchIndex': self.log.index}
-        self.orchestrator.send_peer(peer_id, resp)
+        self.orchestrator.send_peer(peer, resp)
 
 
 class Candidate(Follower):
     def __init__(self, old_state=None, orchestrator=None):
         super().__init__(old_state, orchestrator)
         self.persist['currentTerm'] += 1
-        self.persist['votedFor'] = self.volatile['Id']
+        self.persist['votedFor'] = self.volatile['address']
         self.votes_count = 1
         logger.info('New Election. Term: '+str(self.persist['currentTerm']))
         self.send_vote_requests()
@@ -162,20 +182,20 @@ class Candidate(Follower):
     def send_vote_requests(self):
         logger.info('Broadcasting request_vote')
         msg = {'type': 'request_vote', 'term': self.persist['currentTerm'],
-               'candidateId': self.volatile['Id'],
+               'candidateId': self.volatile['address'],
                'lastLogIndex': self.log.index,
                'lastLogTerm': self.log.term()}
         self.orchestrator.broadcast_peers(msg)
 
-    def on_peer_append_entries(self, peer_id, msg):
+    def on_peer_append_entries(self, peer, msg):
         logger.debug('Converting to Follower')
         self.orchestrator.change_state(Follower)
-        self.orchestrator.state.on_peer_append_entries(peer_id, msg)
+        self.orchestrator.state.on_peer_append_entries(peer, msg)
 
-    def on_peer_response_vote(self, peer_id, msg):
+    def on_peer_response_vote(self, peer, msg):
         self.votes_count += msg['voteGranted']
         logger.info('Vote count: %s', self.votes_count)
-        if self.votes_count > len(config.cluster) / 2:
+        if self.votes_count > len(self.volatile['cluster']) / 2:
             self.orchestrator.change_state(Leader)
 
 
@@ -183,9 +203,9 @@ class Leader(State):
     def __init__(self, old_state=None, orchestrator=None):
         super().__init__(old_state, orchestrator)
         logger.info('Leader of term: %s', self.persist['currentTerm'])
-        self.volatile['leaderId'] = self.volatile['Id']
-        self.nextIndex = {x: self.log.commitIndex + 1 for x in config.cluster}
-        self.matchIndex = {x: 0 for x in config.cluster}
+        self.volatile['leaderId'] = self.volatile['address']
+        self.matchIndex = {p: 0 for p in self.volatile['cluster']}
+        self.nextIndex = {p: self.log.commitIndex + 1 for p in self.matchIndex}
         self.send_append_entries()
         self.waiting_clients = {}
 
@@ -193,42 +213,43 @@ class Leader(State):
         self.append_timer.cancel()
 
     def send_append_entries(self):
-        for peer_id in config.cluster:
-            if peer_id == self.volatile['Id']:
+        for peer in self.volatile['cluster']:
+            if peer == self.volatile['address']:
                 continue
             msg = {'type': 'append_entries',
                    'term': self.persist['currentTerm'],
                    'leaderCommit': self.log.commitIndex,
-                   'leaderId': self.volatile['Id'],
-                   'prevLogIndex': self.nextIndex[peer_id] - 1,
-                   'entries': self.log[self.nextIndex[peer_id]:
-                                       self.nextIndex[peer_id] + 2]}
+                   'leaderId': self.volatile['address'],
+                   'prevLogIndex': self.nextIndex[peer] - 1,
+                   'entries': self.log[self.nextIndex[peer]:
+                                       self.nextIndex[peer] + 2]}
             msg.update({'prevLogTerm': self.log.term(msg['prevLogIndex'])})
 
-            if self.nextIndex[peer_id] <= self.log.compacted.index:
+            if self.nextIndex[peer] <= self.log.compacted.index:
                 msg.update({'compact_data': self.log.compacted.data,
                             'compact_term': self.log.compacted.term,
                             'compact_count': self.log.compacted.count})
 
             logger.debug('Sending %s entries to %s. Start index %s',
-                         len(msg['entries']), peer_id, self.nextIndex[peer_id])
-            self.orchestrator.send_peer(peer_id, msg)
+                         len(msg['entries']), peer, self.nextIndex[peer])
+            self.orchestrator.send_peer(peer, msg)
 
         timeout = randrange(1, 4) * 10 ** (-1 if config.debug else -2)
         loop = asyncio.get_event_loop()
         self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
-    def on_peer_response_append(self, peer_id, msg):
+    def on_peer_response_append(self, peer, msg):
         if msg['success']:
-            self.matchIndex[peer_id] = msg['matchIndex']
-            self.nextIndex[peer_id] = msg['matchIndex'] + 1
+            self.matchIndex[peer] = msg['matchIndex']
+            self.nextIndex[peer] = msg['matchIndex'] + 1
 
-            self.nextIndex[self.volatile['Id']] = self.log.index + 1
-            index = int(statistics.median(self.matchIndex.values()))
+            self.matchIndex[self.volatile['address']] = self.log.index
+            self.nextIndex[self.volatile['address']] = self.log.index + 1
+            index = statistics.median_low(self.matchIndex.values())
             self.log.commit(index)
             self.send_client_append_response()
         else:
-            self.nextIndex[peer_id] = max(0, self.nextIndex[peer_id] - 1)
+            self.nextIndex[peer] = max(0, self.nextIndex[peer] - 1)
 
     def on_client_append(self, protocol, msg):
         entry = {'term': self.persist['currentTerm'], 'data': msg['data']}
@@ -248,3 +269,22 @@ class Leader(State):
                 to_delete.append(client_index)
         for index in to_delete:
             del self.waiting_clients[client_index]
+
+    def on_client_config(self, protocol, msg):
+        cluster = set(self.volatile['cluster'])
+        peer = (msg['address'], int(msg['port']))
+        if msg['action'] == 'add':
+            cluster.add(peer)
+            self.nextIndex[peer] = 0
+            self.matchIndex[peer] = 0
+        elif msg['action'] == 'delete':
+            cluster.remove(peer)
+            del self.nextIndex[peer]
+            del self.matchIndex[peer]
+        self.log.append_entries([
+            {'term': self.persist['currentTerm'],
+             'data':{'key': 'cluster', 'value': tuple(cluster),
+                     'action': 'change'}}],
+            self.log.index)
+        self.volatile['cluster'] = cluster
+        protocol.send({'type': 'result', 'success': True})

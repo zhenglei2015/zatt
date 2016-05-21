@@ -34,3 +34,7 @@ class AbstractClient:
         """Append to remote log"""
         self._request({'type': 'append', 'data': payload})
         self.get_state()
+
+    def config_cluster(self, action, address, port):
+        self._request({'type': 'config', 'action': action,
+                       'address': address, 'port': port})

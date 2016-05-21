@@ -18,11 +18,8 @@ class Orchestrator():
         logger.info('State change:' + new_state.__name__)
         self.state = new_state(old_state=self.state)
 
-    def data_received_peer(self, addr, message):
-        for peer_id, peer in config.cluster.items():
-            if peer == addr:
-                self.state.data_received_peer(peer_id, message)
-                break
+    def data_received_peer(self, sender, message):
+        self.state.data_received_peer(sender, message)
 
     def data_received_client(self, transport, message):
         self.state.data_received_client(transport, message)
@@ -30,15 +27,14 @@ class Orchestrator():
     def send(self, transport, message):
         transport.sendto(str(json.dumps(message)).encode())
 
-    def send_peer(self, peer_id, message):
-        if peer_id == self.state.volatile['Id']:
-            return
-        self.peer_transport.\
-            sendto(str(json.dumps(message)).encode(), config.cluster[peer_id])
+    def send_peer(self, recipient, message):
+        if recipient != self.state.volatile['address']:
+            self.peer_transport.sendto(str(json.dumps(message)).encode(),
+                                       tuple(recipient))
 
     def broadcast_peers(self, message):
-        for peer_id in config.cluster:
-            self.send_peer(peer_id, message)
+        for recipient in self.state.volatile['cluster']:
+            self.send_peer(recipient, message)
 
 
 class PeerProtocol(asyncio.Protocol):
@@ -51,9 +47,9 @@ class PeerProtocol(asyncio.Protocol):
         if self.first_message:
             transport.sendto(json.dumps(self.first_message).encode())
 
-    def datagram_received(self, data, addr):
+    def datagram_received(self, data, sender):
         message = json.loads(data.decode())
-        self.orchestrator.data_received_peer(addr, message)
+        self.orchestrator.data_received_peer(sender, message)
 
     def error_received(self, ex):
         print('Error:', ex)
