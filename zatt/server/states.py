@@ -254,6 +254,8 @@ class Leader(State):
 
     def on_client_append(self, protocol, msg):
         entry = {'term': self.persist['currentTerm'], 'data': msg['data']}
+        if msg['data']['key'] == 'cluster':
+            protocol.send({'type': 'result', 'success': False})
         self.log.append_entries([entry], self.log.index)
         if self.log.index in self.waiting_clients:
             self.waiting_clients[self.log.index].append(protocol)
