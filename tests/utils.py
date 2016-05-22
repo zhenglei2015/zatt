@@ -12,9 +12,9 @@ class Pool:
         self._generate_configs(server_ids)
         self.servers = {}
         for config in self.configs.values():
-            print('Generating server', config['id'])
-            self.servers[config['id']] = (Process(target=self._run_server,
-                                                  args=(config,)))
+            print('Generating server', config['test_id'])
+            self.servers[config['test_id']] = (Process(target=self._run_server,
+                                                       args=(config,)))
 
     def start(self, n):
         if type(n) is int:
@@ -49,17 +49,17 @@ class Pool:
         return list(self.configs.keys())
 
     def _generate_configs(self, server_ids):
-        shared = {'cluster': {}, 'storage': 'zatt.{}.persist',
-                'id': None, 'debug': False, 'save':False}
+        shared = {'cluster': set(), 'storage': '{}.persist', 'debug': False}
 
         for server_id in server_ids:
-            shared['cluster'][server_id] = ('127.0.0.1', 9110 + server_id)
+            shared['cluster'].add(('127.0.0.1', 9110 + server_id))
 
         self.configs = {}
         for server_id in server_ids:
             config = copy.deepcopy(shared)
             config['storage'] = config['storage'].format(server_id)
-            config['id'] = server_id
+            config['address'] = ('127.0.0.1', 9110 + server_id)
+            config['test_id'] = server_id
             self.configs[server_id] = config
 
     def _run_server(self, config):

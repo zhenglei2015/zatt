@@ -22,25 +22,28 @@ class BasicTest(unittest.TestCase):
         # sleep(2)
         self.pool.start(0)
         sleep(2)
-        expected = {'log': {'commitIndex': -1,
-                            'compacted': {'count': 0, 'data': {},
-                                          'term': None,
-                                          'path': 'zatt.0.persist/compact'},
-                            'log': {'data': [], 'path': 'zatt.0.persist/log'},
-                            'state_machine': {'data': {}, 'lastApplied': -1}},
-                    'persist': {'currentTerm': 'STUB', 'votedFor': 'STUB'},
-                    'status': 'Follower',
-                    'volatile': {'Id': 0, 'leaderId': 'STUB'},
-                    'files': 'STUB'}
+        expected =\
+            {'files': 'STUB', 'status': 'Follower',
+             'persist': {'votedFor': 'STUB', 'currentTerm': 'STUB'},
+             'volatile': {'leaderId': 'STUB', 'address': ['127.0.0.1', 9110],
+                          'cluster': set((('127.0.0.1', 9112),
+                                          ('127.0.0.1', 9110),
+                                          ('127.0.0.1', 9111)))},
+             'log': {'commitIndex': -1, 'log': {'data': [], 'path': 'STUB'},
+                     'state_machine': {'lastApplied': -1, 'data': {}},
+                     'compacted': {'count': 0, 'term': None, 'path': 'STUB',
+                                   'data': {}}}}
 
         d = DistributedDict('127.0.0.1', 9110)
         diagnostics = d.diagnostic
         diagnostics['files'] = 'STUB'
-        diagnostics['log']['compacted']['path'] = 'zatt.0.persist/compact'
-        diagnostics['log']['log']['path'] = 'zatt.0.persist/log'
+        diagnostics['log']['compacted']['path'] = 'STUB'
+        diagnostics['log']['log']['path'] = 'STUB'
         diagnostics['persist']['votedFor'] = 'STUB'
         diagnostics['persist']['currentTerm'] = 'STUB'
         diagnostics['volatile']['leaderId'] = 'STUB'
+        diagnostics['volatile']['cluster'] =\
+            set(map(tuple, diagnostics['volatile']['cluster']))
         self.assertEqual(expected, diagnostics)
 
     def test_1_append(self):
