@@ -136,7 +136,7 @@ class LogManager:
             return
         logger.debug('Compaction started')
         not_compacted_log = self[self.state_machine.lastApplied + 1:]
-        self.compacted.data = self.state_machine.data
+        self.compacted.data = self.state_machine.data.copy()
         self.compacted.term = self.term(self.state_machine.lastApplied)
         self.compacted.count = self.state_machine.lastApplied + 1
         self.compacted.persist()
