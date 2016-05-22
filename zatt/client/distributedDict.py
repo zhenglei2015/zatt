@@ -6,24 +6,31 @@ class DistributedDict(collections.UserDict, AbstractClient):
     def __init__(self, addr, port):
         super().__init__()
         self.target = (addr, port)
-        self.data = self.get_state()
+        self.refresh()
 
     def __getitem__(self, key):
-        self.data = self.get_state()
+        self.refresh()
         return self.data[key]
 
     def __setitem__(self, key, value):
         if type(key) != str:
             raise ValueError('Json allows only for key of type "str"')
-        self.append_log({'action': 'change', 'key': key, 'value': value})
-        self.data = self.get_state()
+        self._append_log({'action': 'change', 'key': key, 'value': value})
+        self.refresh()
 
     def __delitem__(self, key):
         del self.data[self.__keytransform__(key)]
-        self.append_log({'action': 'delete', 'key': key})
+        self._append_log({'action': 'delete', 'key': key})
 
     def __keytransform__(self, key):
         return key
+
+    def __repr__(self):
+        self.refresh()
+        return super().__repr__()
+
+    def refresh(self):
+        self.data = self._get_state()
 
 
 if __name__ == '__main__':

@@ -22,18 +22,17 @@ class AbstractClient:
             resp = self._request(message)
         return resp
 
-    @property
-    def diagnostic(self):
-        return self._request({'type': 'diagnostic'})
-
-    def get_state(self):
+    def _get_state(self):
         """Retrive remote state machine"""
         return self._request({'type': 'get'})
 
-    def append_log(self, payload):
+    def _append_log(self, payload):
         """Append to remote log"""
         self._request({'type': 'append', 'data': payload})
-        self.get_state()
+
+    @property
+    def diagnostic(self):
+        return self._request({'type': 'diagnostic'})
 
     def config_cluster(self, action, address, port):
         self._request({'type': 'config', 'action': action,
