@@ -212,6 +212,8 @@ class Leader(State):
 
     def teardown(self):
         self.append_timer.cancel()
+        if hasattr(self, 'config_timer'):
+            self.config_timer.cancel()
 
     def send_append_entries(self):
         for peer in self.volatile['cluster']:
@@ -274,6 +276,15 @@ class Leader(State):
             del self.waiting_clients[client_index]
 
     def on_client_config(self, protocol, msg):
+        pending_configs = tuple(filter(lambda x: x['data']['key'] == 'cluster',
+                                self.log[self.log.commitIndex + 1:]))
+        if pending_configs:
+            timeout = randrange(1, 4) * 10 ** (0 if config.debug else -1)
+            loop = asyncio.get_event_loop()
+            self.config_timer = loop.\
+                call_later(timeout, self.on_client_config, protocol, msg)
+            return
+
         success = True
         cluster = set(self.volatile['cluster'])
         peer = (msg['address'], int(msg['port']))
