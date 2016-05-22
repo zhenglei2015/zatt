@@ -1,11 +1,13 @@
 import unittest
 from time import sleep
 from utils import Pool
+from multiprocessing import Process
 from zatt.client import DistributedDict
 
 
 class BasicTest(unittest.TestCase):
     def setUp(self):
+        self.maxDiff = None
         print('BasicTest setup')
         self.pool = Pool(3)
         self.pool.start(self.pool.ids)
@@ -72,6 +74,51 @@ class BasicTest(unittest.TestCase):
         sleep(1)
         d = DistributedDict('127.0.0.1', 9111)
         self.assertEqual(d['adams'], 'the hitchhiker guide')
+
+    def test_4_compacted_log_replication(self):
+        print('Compacted log replication')
+        d = DistributedDict('127.0.0.1', 9110)
+        d['test'] = 0
+        d['test'] = 1
+        d['test'] = 2
+        d['test'] = 3
+        d['test'] = 4  # compaction kicks in
+        del d
+        sleep(1)
+        d = DistributedDict('127.0.0.1', 9111)
+        self.assertEqual(d, {'test': 4})
+
+    def test_5_add_server(self):
+        print('Add new server')
+        d = DistributedDict('127.0.0.1', 9110)
+        d['test'] = 0
+
+        self.pool.configs[10] = {'address': ('127.0.0.1', 9120),
+                                 'cluster': {('127.0.0.1', 9120), },
+                                 'storage': '20.persist', 'debug': False}
+        self.pool.servers[10] = Process(target=self.pool._run_server,
+                                        args=(self.pool.configs[10],))
+        self.pool.start(10)
+        sleep(1)
+
+        d.config_cluster('add', '127.0.0.1', 9120)
+        sleep(1)
+
+        del d
+        d = DistributedDict('127.0.0.1', 9120)
+
+        self.assertEqual(d, {'test': 0})
+
+    def test_6_remove_server(self):
+        print('Remove server')
+        d = DistributedDict('127.0.0.1', 9110)
+        d.config_cluster('delete', '127.0.0.1', 9111)
+        sleep(1)
+
+        self.pool.stop(1)
+
+        self.assertEqual(set(map(tuple, d.diagnostic['volatile']['cluster'])),
+                         {('127.0.0.1', 9112), ('127.0.0.1', 9110)})
 
 
 if __name__ == '__main__':
