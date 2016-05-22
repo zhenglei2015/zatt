@@ -11,7 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 class State:
+    """Abstract state for sublclassing."""
     def __init__(self, old_state=None, orchestrator=None):
+        """State is initialized passing an orchestator instance when first
+        deployed. Subsequent state changes use the old_state parameter to
+        preserve the environment.
+        """
         if old_state:
             self.orchestrator = old_state.orchestrator
             self.persist = old_state.persist
@@ -27,6 +32,8 @@ class State:
             self._update_cluster()
 
     def data_received_peer(self, peer, msg):
+        """Receive peer messages from orchestrator and pass them to the
+        appropriate method."""
         logger.debug('Received %s from %s', msg['type'], peer)
 
         if msg['term'] > self.persist['currentTerm']:
@@ -44,6 +51,8 @@ class State:
                 logger.info('Unrecognized message from %s: %s', peer, msg)
 
     def data_received_client(self, protocol, msg):
+        """Receive client messages from orchestrator and pass them to the
+        appropriate method."""
         method = getattr(self, 'on_client_' + msg['type'], None)
         if method:
             method(protocol, msg)
@@ -52,6 +61,7 @@ class State:
                         protocol.transport.get_extra_info('peername'), msg)
 
     def on_client_append(self, protocol, msg):
+        """Redirect client to leader upon receiving a client_append message."""
         msg = {'type': 'redirect',
                'leader': self.volatile['leaderId']}
         protocol.send(msg)
@@ -59,15 +69,18 @@ class State:
                      *protocol.transport.get_extra_info('peername'))
 
     def on_client_config(self, protocol, msg):
+        """Redirect client to leader upon receiving a client_config message."""
         return self.on_client_append(protocol, msg)
 
     def on_client_get(self, protocol, msg):
+        """Return state machine to client."""
         state_machine = self.log.state_machine.data.copy()
         if 'cluster' in state_machine:
             del state_machine['cluster']
         protocol.send(state_machine)
 
     def on_client_diagnostic(self, protocol, msg):
+        """Return internal state to client."""
         msg = {'status': self.__class__.__name__,
                'persist': {'votedFor': self.persist['votedFor'],
                            'currentTerm': self.persist['currentTerm']},
@@ -94,6 +107,8 @@ class State:
         protocol.send(msg)
 
     def _update_cluster(self, entries=None):
+        """Scans compacted log and log, looking for the latest cluster
+        configuration."""
         if 'cluster' in self.log.compacted.data:
             self.volatile['cluster'] = self.log.compacted.data['cluster']
         for entry in (self.log if entries is None else entries):
@@ -103,15 +118,19 @@ class State:
 
 
 class Follower(State):
+    """Follower state."""
     def __init__(self, old_state=None, orchestrator=None):
+        """Initialize parent and start election timer."""
         super().__init__(old_state, orchestrator)
         self.persist['votedFor'] = None
         self.restart_election_timer()
 
     def teardown(self):
+        """Stop timers before changing state."""
         self.election_timer.cancel()
 
     def restart_election_timer(self):
+        """Delays transition to the Candidate state by timer."""
         if hasattr(self, 'election_timer'):
             self.election_timer.cancel()
 
@@ -122,6 +141,7 @@ class Follower(State):
         logger.debug('Election timer restarted: %s s', timeout)
 
     def on_peer_request_vote(self, peer, msg):
+        """Grant this node's vote to Candidates."""
         self.restart_election_timer()
         term_is_current = msg['term'] >= self.persist['currentTerm']
         can_vote = self.persist['votedFor'] in [None, msg['candidateId']]
@@ -141,6 +161,10 @@ class Follower(State):
         self.orchestrator.send_peer(peer, response)
 
     def on_peer_append_entries(self, peer, msg):
+        """Manages incoming log entries from the Leader.
+        Data from log compaction is always accepted.
+        In the end, the log is scanned for a new cluster config.
+        """
         self.restart_election_timer()
 
         term_is_current = msg['term'] >= self.persist['currentTerm']
@@ -172,7 +196,9 @@ class Follower(State):
 
 
 class Candidate(Follower):
+    """Candidate state. Notice that this state subclasses Follower."""
     def __init__(self, old_state=None, orchestrator=None):
+        """Initialize parent, increase term, vote for self, ask for votes."""
         super().__init__(old_state, orchestrator)
         self.persist['currentTerm'] += 1
         self.persist['votedFor'] = self.volatile['address']
@@ -181,6 +207,7 @@ class Candidate(Follower):
         self.send_vote_requests()
 
     def send_vote_requests(self):
+        """Ask peers for votes."""
         logger.info('Broadcasting request_vote')
         msg = {'type': 'request_vote', 'term': self.persist['currentTerm'],
                'candidateId': self.volatile['address'],
@@ -189,11 +216,13 @@ class Candidate(Follower):
         self.orchestrator.broadcast_peers(msg)
 
     def on_peer_append_entries(self, peer, msg):
+        """Transition back to Follower upon receiving an append_entries."""
         logger.debug('Converting to Follower')
         self.orchestrator.change_state(Follower)
         self.orchestrator.state.on_peer_append_entries(peer, msg)
 
     def on_peer_response_vote(self, peer, msg):
+        """Register peers votes, transition to Leader upon majority vote."""
         self.votes_count += msg['voteGranted']
         logger.info('Vote count: %s', self.votes_count)
         if self.votes_count > len(self.volatile['cluster']) / 2:
@@ -201,21 +230,30 @@ class Candidate(Follower):
 
 
 class Leader(State):
+    """Leader state."""
     def __init__(self, old_state=None, orchestrator=None):
+        """Initialize parent, sets leader variables, start periodic
+        append_entries"""
         super().__init__(old_state, orchestrator)
         logger.info('Leader of term: %s', self.persist['currentTerm'])
         self.volatile['leaderId'] = self.volatile['address']
         self.matchIndex = {p: 0 for p in self.volatile['cluster']}
         self.nextIndex = {p: self.log.commitIndex + 1 for p in self.matchIndex}
-        self.send_append_entries()
         self.waiting_clients = {}
+        self.send_append_entries()
 
     def teardown(self):
+        """Stop timers before changing state."""
         self.append_timer.cancel()
         if hasattr(self, 'config_timer'):
             self.config_timer.cancel()
 
     def send_append_entries(self):
+        """Send append_entries to the cluster, containing:
+        - nothing: if remote node is up to date.
+        - compacted log: if remote node has to catch up.
+        - log entries: if available.
+        Finally schedules itself for later esecution."""
         for peer in self.volatile['cluster']:
             if peer == self.volatile['address']:
                 continue
@@ -242,6 +280,9 @@ class Leader(State):
         self.append_timer = loop.call_later(timeout, self.send_append_entries)
 
     def on_peer_response_append(self, peer, msg):
+        """Handle peer response to append_entries.
+        If successful RPC, try to commit new entries.
+        If RPC unsuccessful, backtrack."""
         if msg['success']:
             self.matchIndex[peer] = msg['matchIndex']
             self.nextIndex[peer] = msg['matchIndex'] + 1
@@ -255,6 +296,7 @@ class Leader(State):
             self.nextIndex[peer] = max(0, self.nextIndex[peer] - 1)
 
     def on_client_append(self, protocol, msg):
+        """Append new entries to Leader log."""
         entry = {'term': self.persist['currentTerm'], 'data': msg['data']}
         if msg['data']['key'] == 'cluster':
             protocol.send({'type': 'result', 'success': False})
@@ -265,6 +307,7 @@ class Leader(State):
             self.waiting_clients[self.log.index] = [protocol]
 
     def send_client_append_response(self):
+        """Respond to client upon commitment of log entries."""
         to_delete = []
         for client_index, clients in self.waiting_clients.items():
             if client_index >= self.log.commitIndex:
@@ -276,6 +319,9 @@ class Leader(State):
             del self.waiting_clients[client_index]
 
     def on_client_config(self, protocol, msg):
+        """Push new cluster config. When uncommitted cluster changes
+        are already present, retries until they are committed
+        before proceding."""
         pending_configs = tuple(filter(lambda x: x['data']['key'] == 'cluster',
                                 self.log[self.log.commitIndex + 1:]))
         if pending_configs:

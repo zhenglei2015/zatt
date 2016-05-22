@@ -81,6 +81,8 @@ class DictStateMachine(collections.UserDict):
 
 
 class LogManager:
+    """Instantiate and manage the components of the "Log" subsystem.
+    That is: the log, the compactor and the state machine."""
     def __init__(self, compact_count=0, compact_term=None, compact_data={},
                  machine=DictStateMachine):
         erase_log = compact_count or compact_term or compact_data
@@ -92,6 +94,8 @@ class LogManager:
         self.state_machine.apply(self, self.commitIndex)
 
     def __getitem__(self, index):
+        """Get item or slice from the log, based on absolute log indexes.
+        Item(s) already compacted cannot be requested."""
         if type(index) is slice:
             start = index.start - self.compacted.count if index.start else None
             stop = index.stop - self.compacted.count if index.stop else None
@@ -101,9 +105,12 @@ class LogManager:
 
     @property
     def index(self):
+        """Log tip index."""
         return self.compacted.index + len(self.log)
 
     def term(self, index=None):
+        """Return a term given a log index. If no index is passed, return
+        log tip term."""
         if index is None:
             return self.term(self.index)
         elif index == -1:
@@ -146,6 +153,7 @@ class LogManager:
         logger.debug('Log: %s', self.log.data)
 
     def compaction_timer_touch(self):
+        """Periodically initiates compaction."""
         if not hasattr(self, 'compaction_timer'):
             loop = asyncio.get_event_loop()
             self.compaction_timer = loop.call_later(1, self.compact)

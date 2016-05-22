@@ -3,6 +3,8 @@ import json
 
 
 class AbstractClient:
+    """Abstract client. Contains primitives for implementing functioning
+    clients."""
     def _request(self, message):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.target)
@@ -23,11 +25,11 @@ class AbstractClient:
         return resp
 
     def _get_state(self):
-        """Retrive remote state machine"""
+        """Retrive remote state machine."""
         return self._request({'type': 'get'})
 
     def _append_log(self, payload):
-        """Append to remote log"""
+        """Append to remote log."""
         self._request({'type': 'append', 'data': payload})
 
     @property

@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 class Orchestrator():
+    """The orchestrator manages the current node state,
+    switching between Follower, Candidate and Leader when necessary.
+    Only one Orchestrator """
     def __init__(self):
         os.makedirs(config.storage, exist_ok=True)
         self.state = Follower(orchestrator=self)
@@ -38,6 +41,7 @@ class Orchestrator():
 
 
 class PeerProtocol(asyncio.Protocol):
+    """UDP protocol for communicating with peers."""
     def __init__(self, orchestrator, first_message=None):
         self.orchestrator = orchestrator
         self.first_message = first_message
@@ -56,6 +60,7 @@ class PeerProtocol(asyncio.Protocol):
 
 
 class ClientProtocol(asyncio.Protocol):
+    """TCP protocol for communicating with clients."""
     def __init__(self, orchestrator):
         self.orchestrator = orchestrator
 

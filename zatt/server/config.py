@@ -24,6 +24,8 @@ parser.add_argument('--debug', action='store_true', help='Enable debug mode')
 
 
 class Config:
+    """Collect and merge CLI and file based config.
+    This class is a singleton based on the Borg pattern."""
     __shared_state = {}
 
     def __new__(cls, *p, **k):

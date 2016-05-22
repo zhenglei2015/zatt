@@ -6,6 +6,7 @@ from logging.config import dictConfig
 
 
 def tick():
+    """Unobtrusive periodic timestamp for debug log."""
     logger = logging.getLogger(__name__)
     logger.debug('Tick: %s', datetime.now().isoformat('T'))
     loop = asyncio.get_event_loop()
@@ -13,6 +14,7 @@ def tick():
 
 
 def start_logger():
+    """Configure logging verbosity according to the --debug CLI option."""
     logging_config = {
         'version': 1,
         'disable_existing_loggers': False,

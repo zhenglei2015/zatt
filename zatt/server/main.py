@@ -6,6 +6,7 @@ from .logger import start_logger
 
 
 def setup(config={}):
+    """Setup a node."""
     config = Config(config=config)
     start_logger()
     logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ def setup(config={}):
 
 
 def run():
+    """Start a node."""
     server = setup()
     loop = asyncio.get_event_loop()
     try:

@@ -4,6 +4,8 @@ import collections
 
 
 class PersistentDict(collections.UserDict):
+    """Dictionary data structure that is automatically persisted to disk
+    as json."""
     def __init__(self, path=None, data={}):
         if os.path.isfile(path):
             with open(path, 'r') as f:

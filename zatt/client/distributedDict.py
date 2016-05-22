@@ -3,6 +3,7 @@ from .abstractClient import AbstractClient
 
 
 class DistributedDict(collections.UserDict, AbstractClient):
+    """Client for zatt instances with dictionary based state machines."""
     def __init__(self, addr, port):
         super().__init__()
         self.target = (addr, port)
