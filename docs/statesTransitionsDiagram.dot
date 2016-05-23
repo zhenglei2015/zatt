@@ -1,0 +1,51 @@
+digraph G {
+ INIT [style="invisible"];
+ FOLLOWER;
+ CANDIDATE;
+ LEADER;
+
+ 
+ INIT -> FOLLOWER;
+ FOLLOWER -> CANDIDATE [label="Election timeout"];
+ CANDIDATE -> FOLLOWER [label="AppendEntries with higher term"];
+ CANDIDATE -> LEADER [label="Majority of votes"];
+ LEADER -> FOLLOWER [label="AppendEntries with higher term"];
+}
+
+digraph G {
+ INIT [style="invisible"];
+ FOLLOWER;
+ CANDIDATE;
+ LEADER;
+
+ 
+ INIT -> FOLLOWER;
+ FOLLOWER -> end_election_timer -> CANDIDATE;
+ FOLLOWER -> receive_request_vote;
+ FOLLOWER -> receive_append_entries;
+ CANDIDATE -> send_vote_requests;
+ CANDIDATE -> receive_append_entries;
+ CANDIDATE -> receive_response_vote -> LEADER;
+ receive_response_vote -> FOLLOWER;
+ LEADER -> send_append_entries;
+ LEADER -> receive_response_append; 
+}
+
+digraph G {
+ INIT [style="invisible"];
+ FOLLOWER;
+ CANDIDATE;
+ LEADER;
+
+ 
+ INIT -> FOLLOWER;
+ FOLLOWER -> CANDIDATE [label="end_election_timer"];
+ FOLLOWER -> FOLLOWER [label="receive_request_vote"];
+ FOLLOWER -> FOLLOWER [label="receive_append_entries"];
+ CANDIDATE -> CANDIDATE [label="send_vote_requests"];
+ CANDIDATE -> CANDIDATE [label="receive_append_entries"];
+ CANDIDATE -> LEADER [label="receive_response_vote"];
+ CANDIDATE -> FOLLOWER [label="receive_response_vote"];
+ LEADER -> LEADER [label="send_append_entries"];
+ LEADER -> LEADER [label="receive_response_append"];
+}
