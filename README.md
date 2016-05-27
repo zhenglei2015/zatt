@@ -1,11 +1,12 @@
 # [Zatt](https://github.com/simonacca/zatt)
-![Zatt Logo](docs/logo.svg?raw=true "Zatt Logo")
 
 Zatt is a distributed storage system built on the [Raft](https://raft.github.io/)
 consensus algorithm.
 
 By default, clients share a `dict` data structure, although every python object
 is potentially replicable with the `pickle` state machine.
+
+![Zatt Logo](docs/logo.png?raw=true "Zatt Logo")
 
 Please note that the **client** is compatible with both `python2` and `python3`,
 while the **server** makes heavy use of the asynchronous programming library
