@@ -8,7 +8,7 @@ parser = argparse.ArgumentParser(description=('Zatt. An implementation of '
                                               'the Raft algorithm for '
                                               'distributed consensus'))
 parser.add_argument('-c', '--config', dest='path_conf',
-                    help='Config file path. Default: zatt.persist/zatt.conf')
+                    help='Config file path. Default: zatt.persist/config')
 parser.add_argument('-s', '--storage', help=('Path for the persistent state'
                     ' directory. Default: zatt.persist'),
                     default='zatt.persist')
