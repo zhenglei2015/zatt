@@ -1,4 +1,5 @@
 # [Zatt](https://github.com/simonacca/zatt)
+![Zatt Logo](docs/logo.svg?raw=true "Zatt Logo")
 
 Zatt is a distributed storage system built on the [Raft](https://raft.github.io/)
 consensus algorithm.

@@ -2,34 +2,39 @@
 
 Zatt is a **distributed storage system** built on the [Raft](https://raft.github.io) consensus algorithm.
 
-It allows clients to share a **key-value** data structure (a python `dict`), that is automatically replicated to a raft cluster.
+![logo](logo.svg)
 
-Zatt aims to be feature-complete with respect to the [raft paper](http://ramcloud.stanford.edu/raft.pdf); the following features have been implemented so far:
+It allows clients to share a **key-value** data structure (a python `dict`), that is automatically replicated to a high availability cluster.
+
+The project aims to fully implement the algorithm described in the [raft paper](http://ramcloud.stanford.edu/raft.pdf); the following features have been implemented so far:
 
 * Leader election
 * Log replication
 * Log compaction
 * Membership changes
 
-## Contents
+## Table of Contents
 * [Architecture](architecture.md)
 * [Running a Server](server.md)
 * [Embedding a Client](client.md)
 * [Reference](reference.md)
 
 
-## Tutorial
+## Quickstart Tutorial
 ### Installation
 Both the server and the client are shipped in the same
 [package](https://pypi.python.org/pypi/raft/), which can be installed by several means:
 
-#### Pypi
+**PyPI**
+
 `$ pip3 install zatt`
 
-#### Pip & Github
+**Pip & Github**
+
 `$ pip3 install git+ssh://github.com/simonacca/zatt.git`
 
-#### Cloning
+**Cloning**
+
 ```
 $ git clone git@github.com:simonacca/zatt.git
 $ cd zatt
@@ -37,10 +42,22 @@ $ git checkout develop
 $ python3 setup.py install
 ```
 
-Regardless of the installation method, you can check your install with  `$ zattd --help`.
+Regardless of the installation method, you can check that the software works properly issuing  `$ zattd --help`.
 
 
 ### Spinning up a cluster
+We will now start a 3 server cluster on the local machine, listening on ports `9000`, `9001` and `9002` respectively.
+
+
+Start the first server node:
+
+`$ zattd --address 127.0.0.1 --port 9000 --storage 0.persist --remote-address 127.0.0.1 --remote-port 9001 --remote-address 127.0.0.1 --remote-port 9002`
+
+And the remaining ones in separate terminals:
+```
+$ zattd --address 127.0.0.1 --port 9001 --storage 0.persist --remote-address 127.0.0.1 --remote-port 9000 --remote-address 127.0.0.1 --remote-port 9002
+$ zattd --address 127.0.0.1 --port 9002 --storage 0.persist --remote-address 127.0.0.1 --remote-port 9000 --remote-address 127.0.0.1 --remote-port 9001
+```
 
 A server can be configured with command-line options or with a config file,
 in this example, we are going to use both.
