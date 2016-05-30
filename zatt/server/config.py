@@ -36,14 +36,30 @@ class Config:
 
     def _get(self):
         default = {'debug': False, 'address': ('127.0.0.1', 5254),
-                   'cluster': set(), 'storage': 'zatt.persist',
-                   'path_conf': 'zatt.persist/conf'}
-        cmdline = parser.parse_args().__dict__
+                   'cluster': set(), 'storage': 'zatt.persist'}
 
-        path_conf = cmdline['path_conf'] if cmdline['path_conf']\
-            else default['path_conf']
+        environ = {k[5:].lower(): v for (k, v) in os.environ.items()
+                   if k.startswith('ZATT_')}
+        if {'address', 'port'}.issubset(environ):
+            environ['address'] = (environ['address'], int(environ['port']))
+            del environ['port']
+        if {'remote_address', 'remote_port'}.issubset(environ):
+            environ['cluster'] = {(a, int(p)) for (a, p) in
+                                  zip(environ['remote_address'].split(','),
+                                      environ['remote_port'].split(','))}
+            del environ['remote_address']
+            del environ['remote_port']
 
         config = default.copy()
+        config.update(environ)
+
+        cmdline = parser.parse_args().__dict__
+
+        if 'path_conf' not in config:
+            config['path_conf'] = os.path.join(config['storage'], 'conf')
+        path_conf = cmdline['path_conf'] if cmdline['path_conf']\
+            else config['path_conf']
+
         if os.path.isfile(path_conf):
             with open(path_conf, 'r') as f:
                 config.update(json.loads(f.read()))
@@ -68,6 +84,8 @@ class Config:
 
         config['address'] = tuple(config['address'])
         config['cluster'].add(config['address'])
+        if type(config['debug']) is str:
+            config['debug'] = True if config['debug'] == 'true' else False
         return config
 
 config = Config()
