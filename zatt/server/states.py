@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class State:
-    """Abstract state for sublclassing."""
+    """Abstract state for subclassing."""
     def __init__(self, old_state=None, orchestrator=None):
         """State is initialized passing an orchestator instance when first
         deployed. Subsequent state changes use the old_state parameter to
@@ -36,19 +36,18 @@ class State:
         appropriate method."""
         logger.debug('Received %s from %s', msg['type'], peer)
 
-        if msg['term'] > self.persist['currentTerm']:
+        if self.persist['currentTerm'] < msg['term']:
             self.persist['currentTerm'] = msg['term']
             if not type(self) is Follower:
                 logger.info('Remote term is higher, converting to Follower')
                 self.orchestrator.change_state(Follower)
                 self.orchestrator.state.data_received_peer(peer, msg)
                 return
+        method = getattr(self, 'on_peer_' + msg['type'], None)
+        if method:
+            method(peer, msg)
         else:
-            method = getattr(self, 'on_peer_' + msg['type'], None)
-            if method:
-                method(peer, msg)
-            else:
-                logger.info('Unrecognized message from %s: %s', peer, msg)
+            logger.info('Unrecognized message from %s: %s', peer, msg)
 
     def data_received_client(self, protocol, msg):
         """Receive client messages from orchestrator and pass them to the
@@ -142,9 +141,9 @@ class Follower(State):
 
     def on_peer_request_vote(self, peer, msg):
         """Grant this node's vote to Candidates."""
-        self.restart_election_timer()
         term_is_current = msg['term'] >= self.persist['currentTerm']
-        can_vote = self.persist['votedFor'] in [None, msg['candidateId']]
+        can_vote = self.persist['votedFor'] in [tuple(msg['candidateId']),
+                                                None]
         index_is_current = (msg['lastLogTerm'] > self.log.term() or
                             (msg['lastLogTerm'] == self.log.term() and
                              msg['lastLogIndex'] >= self.log.index))
@@ -152,6 +151,7 @@ class Follower(State):
 
         if granted:
             self.persist['votedFor'] = msg['candidateId']
+            self.restart_election_timer()
 
         logger.debug('Voting for %s. Term:%s Vote:%s Index:%s',
                      peer, term_is_current, can_vote, index_is_current)
@@ -263,7 +263,7 @@ class Leader(State):
                    'leaderId': self.volatile['address'],
                    'prevLogIndex': self.nextIndex[peer] - 1,
                    'entries': self.log[self.nextIndex[peer]:
-                                       self.nextIndex[peer] + 2]}
+                                       self.nextIndex[peer] + 100]}
             msg.update({'prevLogTerm': self.log.term(msg['prevLogIndex'])})
 
             if self.nextIndex[peer] <= self.log.compacted.index:
