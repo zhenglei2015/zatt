@@ -310,7 +310,7 @@ class Leader(State):
         """Respond to client upon commitment of log entries."""
         to_delete = []
         for client_index, clients in self.waiting_clients.items():
-            if client_index >= self.log.commitIndex:
+            if client_index <= self.log.commitIndex:
                 for client in clients:
                     client.send({'type': 'result', 'success': True})  # TODO
                     logger.debug('Sent successful response to client')
