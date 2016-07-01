@@ -316,7 +316,7 @@ class Leader(State):
                     logger.debug('Sent successful response to client')
                 to_delete.append(client_index)
         for index in to_delete:
-            del self.waiting_clients[client_index]
+            del self.waiting_clients[index]
 
     def on_client_config(self, protocol, msg):
         """Push new cluster config. When uncommitted cluster changes
