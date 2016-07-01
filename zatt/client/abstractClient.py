@@ -1,5 +1,5 @@
 import socket
-import json
+import ujson as json
 
 
 class AbstractClient:
@@ -20,7 +20,6 @@ class AbstractClient:
         sock.close()
         if 'type' in resp and resp['type'] == 'redirect':
             self.target = tuple(resp['leader'])
-            print('redirected to', self.target)
             resp = self._request(message)
         return resp
 
