@@ -10,7 +10,7 @@ if version.major < 3 or (version.major == 3 and version.minor < 4):
     exclude += ['zatt.server']
     entry_points = {}
 else:
-    entry_points = {'console_scripts':['zattd=zatt.server.main:run']}
+    entry_points = {'console_scripts': ['zattd=zatt.server.main:run']}
 
 setup(name='Zatt',
       version='1.0',
@@ -41,5 +41,6 @@ setup(name='Zatt',
       ],
       # packages = ['zatt.client'],
       packages=find_packages(exclude=exclude),
+      install_requires=['ujson'],
       entry_points=entry_points,
-     )
+      )

@@ -1,6 +1,6 @@
 import asyncio
 import os
-import json
+import ujson as json
 import logging
 from .states import Follower
 from .config import config
