@@ -1,6 +1,8 @@
 import copy
 import asyncio
 import shutil
+import random
+import string
 from multiprocessing import Process
 from zatt.server.main import setup
 
@@ -67,3 +69,10 @@ class Pool:
         setup(config)
         loop = asyncio.get_event_loop()
         loop.run_forever()
+
+
+def get_random_string(lenght=12, allowed_chars=None):
+    random_gen = random.SystemRandom()
+    if allowed_chars is None:
+        allowed_chars = string.ascii_letters + string.digits
+    return ''.join([random_gen.choice(allowed_chars) for _ in range(lenght)])
