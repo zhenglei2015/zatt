@@ -247,6 +247,10 @@ class Leader(State):
         self.append_timer.cancel()
         if hasattr(self, 'config_timer'):
             self.config_timer.cancel()
+        for clients in self.waiting_clients.values():
+            for client in clients:
+                client.send({'type': 'result', 'success': False})
+                logger.error('Sent unsuccessful response to client')
 
     def send_append_entries(self):
         """Send append_entries to the cluster, containing:
