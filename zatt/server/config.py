@@ -32,7 +32,12 @@ class Config:
         return cls._instance
 
     def __init__(self, config={}):
-        self.__dict__ = config if config else self._get()
+        if config is None:
+            self.__dict__ = {}
+        elif config:
+            self.__dict__ = config
+        else:
+            self.__dict__ = self._get()
 
     def _get(self):
         default = {'debug': False, 'address': ('127.0.0.1', 5254),
@@ -88,4 +93,4 @@ class Config:
             config['debug'] = True if config['debug'] == 'true' else False
         return config
 
-config = Config()
+config = Config(None)
