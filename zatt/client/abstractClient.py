@@ -7,7 +7,7 @@ class AbstractClient:
     clients."""
     def _request(self, message):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(self.target)
+        sock.connect(self.server_address)
         sock.send(str(json.dumps(message)).encode())
 
         buff = bytes()
@@ -19,7 +19,7 @@ class AbstractClient:
         resp = json.loads(buff.decode('utf-8'))
         sock.close()
         if 'type' in resp and resp['type'] == 'redirect':
-            self.target = tuple(resp['leader'])
+            self.server_address = tuple(resp['leader'])
             resp = self._request(message)
         return resp
 
@@ -29,7 +29,7 @@ class AbstractClient:
 
     def _append_log(self, payload):
         """Append to remote log."""
-        self._request({'type': 'append', 'data': payload})
+        return self._request({'type': 'append', 'data': payload})
 
     @property
     def diagnostic(self):
