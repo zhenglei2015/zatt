@@ -41,6 +41,6 @@ setup(name='Zatt',
       ],
       # packages = ['zatt.client'],
       packages=find_packages(exclude=exclude),
-      install_requires=['ujson'],
+      install_requires=['msgpack-python'],
       entry_points=entry_points,
       )
