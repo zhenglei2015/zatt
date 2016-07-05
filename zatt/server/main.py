@@ -1,8 +1,8 @@
 import asyncio
 import logging
-from .protocols import Orchestrator, PeerProtocol, ClientProtocol
-from .config import Config
-from .logger import start_logger
+from zatt.server.protocols import Orchestrator, PeerProtocol, ClientProtocol
+from zatt.server.config import Config
+from zatt.server.logger import start_logger
 
 
 def setup(config={}):
