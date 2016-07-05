@@ -1,5 +1,5 @@
 import socket
-import ujson as json
+import msgpack
 
 
 class AbstractClient:
@@ -8,7 +8,7 @@ class AbstractClient:
     def _request(self, message):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.server_address)
-        sock.send(str(json.dumps(message)).encode())
+        sock.send(msgpack.packb(message, use_bin_type=True))
 
         buff = bytes()
         while True:
@@ -16,7 +16,7 @@ class AbstractClient:
             if not block:
                 break
             buff += block
-        resp = json.loads(buff.decode('utf-8'))
+        resp = msgpack.unpackb(buff, encoding='utf-8')
         sock.close()
         if 'type' in resp and resp['type'] == 'redirect':
             self.server_address = tuple(resp['leader'])

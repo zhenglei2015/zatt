@@ -1,6 +1,6 @@
 import asyncio
 import os
-import ujson as json
+import msgpack
 import logging
 from .states import Follower
 from .config import config
@@ -28,11 +28,11 @@ class Orchestrator():
         self.state.data_received_client(transport, message)
 
     def send(self, transport, message):
-        transport.sendto(str(json.dumps(message)).encode())
+        transport.sendto(msgpack.packb(message, use_bin_type=True))
 
     def send_peer(self, recipient, message):
         if recipient != self.state.volatile['address']:
-            self.peer_transport.sendto(str(json.dumps(message)).encode(),
+            self.peer_transport.sendto(msgpack.packb(message, use_bin_type=True),
                                        tuple(recipient))
 
     def broadcast_peers(self, message):
@@ -49,10 +49,11 @@ class PeerProtocol(asyncio.Protocol):
     def connection_made(self, transport):
         self.transport = transport
         if self.first_message:
-            transport.sendto(json.dumps(self.first_message).encode())
+            transport.sendto(msgpack.packb(self.first_message,
+                                           use_bin_type=True))
 
     def datagram_received(self, data, sender):
-        message = json.loads(data.decode())
+        message = msgpack.unpackb(data, encoding='utf-8')
         self.orchestrator.data_received_peer(sender, message)
 
     def error_received(self, ex):
@@ -70,7 +71,7 @@ class ClientProtocol(asyncio.Protocol):
         self.transport = transport
 
     def data_received(self, data):
-        message = json.loads(data.decode())
+        message = msgpack.unpackb(data, encoding='utf-8')
         self.orchestrator.data_received_client(self, message)
 
     def connection_lost(self, exc):
@@ -78,5 +79,5 @@ class ClientProtocol(asyncio.Protocol):
                      *self.transport.get_extra_info('peername'))
 
     def send(self, message):
-        self.transport.write(json.dumps(message).encode())
+        self.transport.write(msgpack.packb(message, use_bin_type=True))
         self.transport.close()

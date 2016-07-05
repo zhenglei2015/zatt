@@ -15,8 +15,6 @@ class DistributedDict(collections.UserDict, AbstractClient):
         return self.data[key]
 
     def __setitem__(self, key, value):
-        if type(key) != str:
-            raise ValueError('Json allows only for key of type "str"')
         self._append_log({'action': 'change', 'key': key, 'value': value})
 
     def __delitem__(self, key):
