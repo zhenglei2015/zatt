@@ -139,7 +139,7 @@ class LogManager:
 
     def compact(self):
         del self.compaction_timer
-        if self.commitIndex - self.compacted.count < 3:
+        if self.commitIndex - self.compacted.count < 60:
             return
         logger.debug('Compaction started')
         not_compacted_log = self[self.state_machine.lastApplied + 1:]
@@ -156,4 +156,4 @@ class LogManager:
         """Periodically initiates compaction."""
         if not hasattr(self, 'compaction_timer'):
             loop = asyncio.get_event_loop()
-            self.compaction_timer = loop.call_later(1, self.compact)
+            self.compaction_timer = loop.call_later(0.01, self.compact)
