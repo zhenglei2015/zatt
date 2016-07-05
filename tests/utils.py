@@ -3,6 +3,7 @@ import asyncio
 import shutil
 import random
 import string
+import logging
 from multiprocessing import Process
 from zatt.server.main import setup
 
@@ -65,8 +66,9 @@ class Pool:
             self.configs[server_id] = config
 
     def _run_server(self, config):
-        print(config)
         setup(config)
+        zatt_logger = logging.getLogger('zatt')
+        zatt_logger.setLevel(logging.CRITICAL)
         loop = asyncio.get_event_loop()
         loop.run_forever()
 

@@ -5,11 +5,6 @@ from time import sleep
 from timeit import default_timer as timer
 
 
-
-# import logging
-# zatt_logger = logging.getLogger('zatt')
-# zatt_logger.setLevel(logging.CRITICAL)
-
 parser = argparse.ArgumentParser(description='Load test generator')
 parser.add_argument('-s', type=int, default=4,      help='Server instances')
 parser.add_argument('-c', type=int, default=16,     help='Client instances')
