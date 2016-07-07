@@ -40,7 +40,7 @@ class Config:
             self.__dict__ = self._get()
 
     def _get(self):
-        default = {'debug': False, 'address': ('127.0.0.1', 5254),
+        default = {'debug': False, 'address': ['127.0.0.1', 5254],
                    'cluster': set(), 'storage': 'zatt.persist'}
 
         environ = {k[5:].lower(): v for (k, v) in os.environ.items()
@@ -71,17 +71,20 @@ class Config:
 
         config['cluster'] = {(a, int(p)) for (a, p) in config['cluster']}
 
-        cmdline['address'] = (cmdline['address'], cmdline['port'])\
-            if cmdline['address'] else None
+        if cmdline['address']:
+            config['address'][0] = cmdline['address']
+        if cmdline['port']:
+            config['address'][1] = cmdline['port']
+        # cmdline['address'] = (cmdline['address'], cmdline['port'])\
+            # if cmdline['address'] else None
         del cmdline['port']
+        del cmdline['address']
 
         if cmdline['remote_address'] and cmdline['remote_port']:
             config['cluster'].add(*zip(cmdline['remote_address'],
                                        cmdline['remote_port']))
         del cmdline['remote_address']
         del cmdline['remote_port']
-        if cmdline['address'] is not None:
-            config['cluster'].remove(tuple(config['address']))
 
         for k, v in cmdline.items():
             if v is not None:
