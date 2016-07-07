@@ -19,7 +19,7 @@ class Log(collections.UserList):
             os.remove(self.path)
             logger.debug('Using parameters')
         elif os.path.isfile(self.path):
-            utils.msgpack_appendable_unpack(self.path)
+            self.data = utils.msgpack_appendable_unpack(self.path)
             logger.debug('Using persisted data')
 
     def append_entries(self, entries, start):
