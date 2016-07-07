@@ -91,13 +91,6 @@ class State:
                'files': {}}
         msg['volatile']['cluster'] = list(msg['volatile']['cluster'])
 
-        for filename in ['state', 'log', 'compact']:
-            try:
-                with open(join(config.storage, filename), 'r') as f:
-                    msg['files'][filename] = f.read()
-            except FileNotFoundError:
-                msg['files'][filename] = None
-
         if type(self) is Leader:
             msg.update({'waiting_clients': self.waiting_clients,
                         'leaderStatus':

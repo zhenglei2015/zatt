@@ -4,6 +4,7 @@ import collections
 import asyncio
 import logging
 from .config import config
+from zatt.server import utils
 
 logger = logging.getLogger(__name__)
 
@@ -14,30 +15,25 @@ class Log(collections.UserList):
         self.path = os.path.join(config.storage, 'log')
         #  load
         logger.debug('Initializing log')
-        if erase_log:
-            self.replace([])
+        if erase_log and os.path.isfile(self.path):
+            os.remove(self.path)
             logger.debug('Using parameters')
         elif os.path.isfile(self.path):
-            with open(self.path, 'rb') as f:
-                self.data = msgpack.unpack(f, encoding='utf-8')
+            utils.msgpack_appendable_unpack(self.path)
             logger.debug('Using persisted data')
 
     def append_entries(self, entries, start):
-        # The else branch is disabled because there is no way at the moment
-        # to append msgpack serialized objects to a file
-        if len(self.data) >= start or True:
+        if len(self.data) >= start:
             self.replace(self.data[:start] + entries)
         else:
             self.data += entries
-            # with open(self.path, '+wb') as f:
-            #     msgpack.packb(self.data, use_bin_type=True)
-            #     for entry in entries:
-            #         f.write(json.dumps(entry) + '\n')
+            utils.msgpack_appendable_pack(entries, self.path)
 
     def replace(self, new_data):
+        if os.path.isfile(self.path):
+            os.remove(self.path)
         self.data = new_data
-        with open(self.path, 'wb') as f:
-            msgpack.pack(self.data, f, use_bin_type=True)
+        utils.msgpack_appendable_pack(self.data, self.path)
 
 
 class Compactor():
