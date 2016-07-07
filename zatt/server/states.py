@@ -194,10 +194,16 @@ class Candidate(Follower):
         """Initialize parent, increase term, vote for self, ask for votes."""
         super().__init__(old_state, orchestrator)
         self.persist['currentTerm'] += 1
-        self.persist['votedFor'] = self.volatile['address']
-        self.votes_count = 1
+        self.votes_count = 0
         logger.info('New Election. Term: %s', self.persist['currentTerm'])
         self.send_vote_requests()
+
+        def vote_self():
+            self.persist['votedFor'] = self.volatile['address']
+            self.on_peer_response_vote(
+                self.volatile['address'], {'voteGranted': True})
+        loop = asyncio.get_event_loop()
+        loop.call_soon(vote_self)
 
     def send_vote_requests(self):
         """Ask peers for votes."""
@@ -302,6 +308,9 @@ class Leader(State):
             self.waiting_clients[self.log.index].append(protocol)
         else:
             self.waiting_clients[self.log.index] = [protocol]
+        self.on_peer_response_append(
+            self.volatile['address'], {'success': True,
+                                       'matchIndex': self.log.commitIndex})
 
     def send_client_append_response(self):
         """Respond to client upon commitment of log entries."""
