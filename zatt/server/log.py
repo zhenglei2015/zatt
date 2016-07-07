@@ -1,5 +1,5 @@
 import os
-import ujson as json
+import msgpack
 import collections
 import asyncio
 import logging
@@ -18,24 +18,26 @@ class Log(collections.UserList):
             self.replace([])
             logger.debug('Using parameters')
         elif os.path.isfile(self.path):
-            with open(self.path, 'r') as f:
-                self.data = list(map(json.loads, f.readlines()))
+            with open(self.path, 'rb') as f:
+                self.data = msgpack.unpack(f, encoding='utf-8')
             logger.debug('Using persisted data')
 
     def append_entries(self, entries, start):
-        if len(self.data) >= start:
+        # The else branch is disabled because there is no way at the moment
+        # to append msgpack serialized objects to a file
+        if len(self.data) >= start or True:
             self.replace(self.data[:start] + entries)
         else:
             self.data += entries
-            with open(self.path, '+a') as f:
-                for entry in entries:
-                    f.write(json.dumps(entry) + '\n')
+            # with open(self.path, '+wb') as f:
+            #     msgpack.packb(self.data, use_bin_type=True)
+            #     for entry in entries:
+            #         f.write(json.dumps(entry) + '\n')
 
     def replace(self, new_data):
         self.data = new_data
-        with open(self.path, 'w') as f:
-            lines = map(lambda x: json.dumps(x) + '\n', self.data)
-            f.writelines(lines)
+        with open(self.path, 'wb') as f:
+            msgpack.pack(self.data, f, use_bin_type=True)
 
 
 class Compactor():
@@ -51,7 +53,7 @@ class Compactor():
             logger.debug('Using parameters')
         elif os.path.isfile(self.path):
             with open(self.path, 'r') as f:
-                self.__dict__.update(json.loads(f.read()))
+                self.__dict__.update(msgpack.unpack(f, encoding='utf-8'))
             logger.debug('Using persisted data')
 
     @property
@@ -59,9 +61,9 @@ class Compactor():
         return self.count - 1
 
     def persist(self):
-        with open(self.path, 'w+') as f:
+        with open(self.path, 'wb+') as f:
             raw = {'count': self.count, 'term': self.term, 'data': self.data}
-            f.write(json.dumps(raw))
+            msgpack.pack(raw, f, use_bin_type=True)
 
 
 class DictStateMachine(collections.UserDict):
