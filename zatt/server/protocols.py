@@ -32,8 +32,8 @@ class Orchestrator():
 
     def send_peer(self, recipient, message):
         if recipient != self.state.volatile['address']:
-            self.peer_transport.sendto(msgpack.packb(message, use_bin_type=True),
-                                       tuple(recipient))
+            self.peer_transport.sendto(
+                msgpack.packb(message, use_bin_type=True), tuple(recipient))
 
     def broadcast_peers(self, message):
         for recipient in self.state.volatile['cluster']:
@@ -49,8 +49,8 @@ class PeerProtocol(asyncio.Protocol):
     def connection_made(self, transport):
         self.transport = transport
         if self.first_message:
-            transport.sendto(msgpack.packb(self.first_message,
-                                           use_bin_type=True))
+            transport.sendto(
+                msgpack.packb(self.first_message, use_bin_type=True))
 
     def datagram_received(self, data, sender):
         message = msgpack.unpackb(data, encoding='utf-8')
