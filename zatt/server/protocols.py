@@ -4,6 +4,7 @@ import msgpack
 import logging
 from .states import Follower
 from .config import config
+from .utils import extended_msgpack_serializer
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,8 @@ class Orchestrator():
         self.state.data_received_client(transport, message)
 
     def send(self, transport, message):
-        transport.sendto(msgpack.packb(message, use_bin_type=True))
+        transport.sendto(msgpack.packb(message, use_bin_type=True,
+                         default=extended_msgpack_serializer))
 
     def send_peer(self, recipient, message):
         if recipient != self.state.volatile['address']:
@@ -43,6 +45,7 @@ class Orchestrator():
 class PeerProtocol(asyncio.Protocol):
     """UDP protocol for communicating with peers."""
     def __init__(self, orchestrator, first_message=None):
+
         self.orchestrator = orchestrator
         self.first_message = first_message
 
@@ -79,5 +82,6 @@ class ClientProtocol(asyncio.Protocol):
                      *self.transport.get_extra_info('peername'))
 
     def send(self, message):
-        self.transport.write(msgpack.packb(message, use_bin_type=True))
+        self.transport.write(msgpack.packb(
+            message, use_bin_type=True, default=extended_msgpack_serializer))
         self.transport.close()

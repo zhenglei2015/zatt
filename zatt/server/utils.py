@@ -1,5 +1,5 @@
 import os
-import ujson as json
+import json
 import collections
 import msgpack
 
@@ -71,3 +71,13 @@ def msgpack_appendable_unpack(path):
         f.seek(MAX_MSGPACK_ARRAY_HEADER_LEN)
 
         return [unpacker.unpack() for _ in range(length)]
+
+
+def extended_msgpack_serializer(obj):
+    """msgpack serializer for objects not serializable by default"""
+
+    if isinstance(obj, collections.deque):
+        serial = list(obj)
+        return serial
+    else:
+        raise TypeError("Type not serializable")
