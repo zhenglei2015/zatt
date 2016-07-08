@@ -36,5 +36,5 @@ class AbstractClient:
         return self._request({'type': 'diagnostic'})
 
     def config_cluster(self, action, address, port):
-        self._request({'type': 'config', 'action': action,
+        return self._request({'type': 'config', 'action': action,
                        'address': address, 'port': port})
