@@ -92,6 +92,8 @@ class BasicTest(unittest.TestCase):
         print('Add new server')
         d = DistributedDict('127.0.0.1', 9110)
         d['test'] = 0
+        self.pool.stop(self.pool.ids)
+        self.pool.start(self.pool.ids)
 
         self.pool.configs[10] = {'address': ('127.0.0.1', 9120),
                                  'cluster': {('127.0.0.1', 9120), },
