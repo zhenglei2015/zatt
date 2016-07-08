@@ -1,8 +1,8 @@
 import asyncio
-import collections
 import logging
 import statistics
 import time
+from collections import deque
 from random import randrange
 from os.path import join
 from .utils import PersistentDict
@@ -24,6 +24,7 @@ class State:
             self.persist = old_state.persist
             self.volatile = old_state.volatile
             self.log = old_state.log
+            self.stats = old_state.stats
         else:
             self.orchestrator = orchestrator
             self.persist = PersistentDict(join(config.storage, 'state'),
@@ -32,6 +33,11 @@ class State:
                              'address': config.address}
             self.log = LogManager()
             self._update_cluster()
+
+            loop = asyncio.get_event_loop()
+            loop.call_later(1, self.update_stats)
+        self.stats = {'read': {'current': 0, 'past': deque(maxlen=10)},
+                      'write': {'current': 0, 'past': deque(maxlen=10)}}
 
     def data_received_peer(self, peer, msg):
         """Receive peer messages from orchestrator and pass them to the
@@ -78,6 +84,7 @@ class State:
         state_machine = self.log.state_machine.data.copy()
         if 'cluster' in state_machine:
             del state_machine['cluster']
+        self.stats['read']['current'] += 1
         protocol.send(state_machine)
 
     def on_client_diagnostic(self, protocol, msg):
@@ -88,16 +95,16 @@ class State:
                'volatile': self.volatile,
                'log': {'commitIndex': self.log.commitIndex,
                        'log': self.log.log.__dict__,
-                       'state_machine': self.log.state_machine.__dict__}}
+                       'state_machine': self.log.state_machine.__dict__},
+               'stats': self.stats}
         msg['volatile']['cluster'] = list(msg['volatile']['cluster'])
 
         if type(self) is Leader:
             msg.update({'leaderStatus':
                         {'netIndex': tuple(self.nextIndex.items()),
                          'matchIndex': tuple(self.matchIndex.items()),
-                         'waiting_clients': {k: len(v) for (k, v)
-                                             in self.waiting_clients.items()},
-                         'stats': self.stats}})
+                         'waiting_clients': {k: len(v) for (k, v) in
+                                             self.waiting_clients.items()}}})
         protocol.send(msg)
 
     def _update_cluster(self, entries=None):
@@ -109,6 +116,19 @@ class State:
             if entry['data']['key'] == 'cluster':
                 self.volatile['cluster'] = entry['data']['value']
         self.volatile['cluster'] = tuple(map(tuple, self.volatile['cluster']))
+
+    def update_stats(self):
+        if self.stats['read']['current']:
+            logger.debug('Completed %s reads (%s ms/op)',
+                         self.stats['read']['current'],
+                         1/self.stats['read']['current'] * 1000)
+
+        self.stats['read']['past'].append(
+                {time.time(): self.stats['read']['current']})
+        self.stats['read']['current'] = 0
+
+        loop = asyncio.get_event_loop()
+        loop.call_later(1, self.orchestrator.state.update_stats)
 
 
 class Follower(State):
@@ -243,14 +263,9 @@ class Leader(State):
         self.waiting_clients = {}
         self.send_append_entries()
 
-        self.stats = {'active_requests': 0,
-                      'past_requests': collections.deque(maxlen=10)}
-        self.update_stats()
-
     def teardown(self):
         """Stop timers before changing state."""
         self.append_timer.cancel()
-        self.statistics_timer.cancel()
         if hasattr(self, 'config_timer'):
             self.config_timer.cancel()
         for clients in self.waiting_clients.values():
@@ -327,7 +342,7 @@ class Leader(State):
                 for client in clients:
                     client.send({'type': 'result', 'success': True})  # TODO
                     logger.debug('Sent successful response to client')
-                    self.stats['active_requests'] += 1
+                    self.stats['write']['current'] += 1
                 to_delete.append(client_index)
         for index in to_delete:
             del self.waiting_clients[index]
@@ -369,13 +384,12 @@ class Leader(State):
         protocol.send({'type': 'result', 'success': success})
 
     def update_stats(self):
-        if self.stats['active_requests']:
-            logger.debug('Completed %s requ', self.stats['active_requests'])
-            logger.debug('ms/req: %s', 1/self.stats['active_requests'] * 1000)
+        if self.stats['write']['current']:
+            logger.debug('Completed %s writes (%s ms/op)',
+                         self.stats['write']['current'],
+                         1/self.stats['write']['current'] * 1000)
 
-        self.stats['past_requests'].append(
-                {time.time(): self.stats['active_requests']})
-        self.stats['active_requests'] = 0
-
-        loop = asyncio.get_event_loop()
-        self.statistics_timer = loop.call_later(1, self.update_stats)
+        self.stats['write']['past'].append(
+                {time.time(): self.stats['write']['current']})
+        self.stats['write']['current'] = 0
+        super().update_stats()
