@@ -82,8 +82,6 @@ class State:
     def on_client_get(self, protocol, msg):
         """Return state machine to client."""
         state_machine = self.log.state_machine.data.copy()
-        if 'cluster' in state_machine:
-            del state_machine['cluster']
         self.stats['read']['current'] += 1
         protocol.send(state_machine)
 
@@ -262,6 +260,14 @@ class Leader(State):
         self.nextIndex = {p: self.log.commitIndex + 1 for p in self.matchIndex}
         self.waiting_clients = {}
         self.send_append_entries()
+
+        if 'cluster' not in self.log.state_machine:
+            self.log.append_entries([
+                {'term': self.persist['currentTerm'],
+                 'data':{'key': 'cluster',
+                         'value': tuple(self.volatile['cluster']),
+                         'action': 'change'}}],
+                self.log.index)
 
     def teardown(self):
         """Stop timers before changing state."""
