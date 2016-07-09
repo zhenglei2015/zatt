@@ -1,9 +1,13 @@
 import os
 import json
+import time
+import asyncio
+import logging
 import collections
 import msgpack
 
 MAX_MSGPACK_ARRAY_HEADER_LEN = 5
+logger = logging.getLogger(__name__)
 
 
 class PersistentDict(collections.UserDict):
@@ -30,6 +34,28 @@ class PersistentDict(collections.UserDict):
     def persist(self):
         with open(self.path, 'w+') as f:
             f.write(json.dumps(self.data))
+
+
+class TallyCounter:
+    def __init__(self, categories=[]):
+        self.data = {c: {'current': 0, 'past': collections.deque(maxlen=10)}
+                     for c in categories}
+        loop = asyncio.get_event_loop()
+        loop.call_later(1, self._tick)
+
+    def _tick(self):
+        for name, category in self.data.items():
+            if category['current']:
+                logger.debug('Completed %s %s (%s ms/op)', category['current'],
+                             name, 1/category['current'] * 1000)
+
+            category['past'].append({time.time(): category['current']})
+            category['current'] = 0
+        loop = asyncio.get_event_loop()
+        loop.call_later(1, self._tick)
+
+    def increment(self, category, amount=1):
+        self.data[category]['current'] += amount
 
 
 def msgpack_appendable_pack(o, path):

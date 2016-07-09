@@ -1,11 +1,9 @@
 import asyncio
 import logging
 import statistics
-import time
-from collections import deque
 from random import randrange
 from os.path import join
-from .utils import PersistentDict
+from .utils import PersistentDict, TallyCounter
 from .log import LogManager
 from .config import config
 
@@ -24,7 +22,6 @@ class State:
             self.persist = old_state.persist
             self.volatile = old_state.volatile
             self.log = old_state.log
-            self.stats = old_state.stats
         else:
             self.orchestrator = orchestrator
             self.persist = PersistentDict(join(config.storage, 'state'),
@@ -33,11 +30,7 @@ class State:
                              'address': config.address}
             self.log = LogManager()
             self._update_cluster()
-
-            loop = asyncio.get_event_loop()
-            loop.call_later(1, self.update_stats)
-        self.stats = {'read': {'current': 0, 'past': deque(maxlen=10)},
-                      'write': {'current': 0, 'past': deque(maxlen=10)}}
+        self.stats = TallyCounter(['read', 'write', 'append'])
 
     def data_received_peer(self, peer, msg):
         """Receive peer messages from orchestrator and pass them to the
@@ -82,7 +75,7 @@ class State:
     def on_client_get(self, protocol, msg):
         """Return state machine to client."""
         state_machine = self.log.state_machine.data.copy()
-        self.stats['read']['current'] += 1
+        self.stats.increment('read')
         protocol.send(state_machine)
 
     def on_client_diagnostic(self, protocol, msg):
@@ -94,7 +87,7 @@ class State:
                'log': {'commitIndex': self.log.commitIndex,
                        'log': self.log.log.__dict__,
                        'state_machine': self.log.state_machine.__dict__},
-               'stats': self.stats}
+               'stats': self.stats.data}
         msg['volatile']['cluster'] = list(msg['volatile']['cluster'])
 
         if type(self) is Leader:
@@ -114,19 +107,6 @@ class State:
             if entry['data']['key'] == 'cluster':
                 self.volatile['cluster'] = entry['data']['value']
         self.volatile['cluster'] = tuple(map(tuple, self.volatile['cluster']))
-
-    def update_stats(self):
-        if self.stats['read']['current']:
-            logger.debug('Completed %s reads (%s ms/op)',
-                         self.stats['read']['current'],
-                         1/self.stats['read']['current'] * 1000)
-
-        self.stats['read']['past'].append(
-                {time.time(): self.stats['read']['current']})
-        self.stats['read']['current'] = 0
-
-        loop = asyncio.get_event_loop()
-        loop.call_later(1, self.orchestrator.state.update_stats)
 
 
 class Follower(State):
@@ -196,6 +176,7 @@ class Follower(State):
             self.log.commit(msg['leaderCommit'])
             self.volatile['leaderId'] = msg['leaderId']
             logger.debug('Log index is now %s', self.log.index)
+            self.stats.increment('append', len(msg['entries']))
         else:
             logger.warning('Could not append entries. cause: %s', 'wrong\
                 term' if not term_is_current else 'prev log term mismatch')
@@ -348,7 +329,7 @@ class Leader(State):
                 for client in clients:
                     client.send({'type': 'result', 'success': True})  # TODO
                     logger.debug('Sent successful response to client')
-                    self.stats['write']['current'] += 1
+                    self.stats.increment('write')
                 to_delete.append(client_index)
         for index in to_delete:
             del self.waiting_clients[index]
@@ -388,14 +369,3 @@ class Leader(State):
             self.log.index)
         self.volatile['cluster'] = cluster
         protocol.send({'type': 'result', 'success': success})
-
-    def update_stats(self):
-        if self.stats['write']['current']:
-            logger.debug('Completed %s writes (%s ms/op)',
-                         self.stats['write']['current'],
-                         1/self.stats['write']['current'] * 1000)
-
-        self.stats['write']['past'].append(
-                {time.time(): self.stats['write']['current']})
-        self.stats['write']['current'] = 0
-        super().update_stats()
