@@ -363,10 +363,11 @@ class Leader(State):
             del self.matchIndex[peer]
         else:
             success = False
-        self.log.append_entries([
-            {'term': self.persist['currentTerm'],
-             'data':{'key': 'cluster', 'value': tuple(cluster),
-                     'action': 'change'}}],
-            self.log.index)
-        self.volatile['cluster'] = cluster
+        if success:
+            self.log.append_entries([
+                {'term': self.persist['currentTerm'],
+                 'data':{'key': 'cluster', 'value': tuple(cluster),
+                         'action': 'change'}}],
+                self.log.index)
+            self.volatile['cluster'] = cluster
         protocol.send({'type': 'result', 'success': success})
