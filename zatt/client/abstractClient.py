@@ -1,10 +1,12 @@
 import socket
+import random
 import msgpack
 
 
 class AbstractClient:
     """Abstract client. Contains primitives for implementing functioning
     clients."""
+
     def _request(self, message):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.server_address)
@@ -25,6 +27,7 @@ class AbstractClient:
 
     def _get_state(self):
         """Retrive remote state machine."""
+        self.server_address = tuple(random.choice(self.data['cluster']))
         return self._request({'type': 'get'})
 
     def _append_log(self, payload):
@@ -37,4 +40,4 @@ class AbstractClient:
 
     def config_cluster(self, action, address, port):
         return self._request({'type': 'config', 'action': action,
-                       'address': address, 'port': port})
+                              'address': address, 'port': port})
