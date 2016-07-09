@@ -249,6 +249,7 @@ class Leader(State):
                          'value': tuple(self.volatile['cluster']),
                          'action': 'change'}}],
                 self.log.index)
+            self.log.commit(self.log.index)
 
     def teardown(self):
         """Stop timers before changing state."""
