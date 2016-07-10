@@ -50,8 +50,6 @@ class Client:
                         [server_str.split(':') for server_str in args.servers]]
         if args.head:
             self.head(args)
-        elif args.stats:
-            self.stats_keeper()
         else:
             self.client()
 
