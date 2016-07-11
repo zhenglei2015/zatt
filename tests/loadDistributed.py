@@ -69,9 +69,11 @@ class Client:
                 self.repeat()
             except ConnectionRefusedError:
                 print('Connection refused')
-            time.sleep(3)
+            except KeyError:
+                print('Server Initialization')
+            time.sleep(15 if self.last_job else 1)
 
-    def centralize_comm(self, term, read=False):
+    def broadcast(self, term, read=False):
         handle = '{}_{}'.format(term, self.prefix)
         self.leader = DistributedDict(*self.leader_address)
         if read:
@@ -81,9 +83,10 @@ class Client:
 
     def repeat(self):
         self.leader.refresh()
-        if not self.centralize_comm('checkin', read=True):
-            self.centralize_comm('checkin')
+        if not self.broadcast('checkin', read=True):
+            self.broadcast('checkin')
             self.last_job = None
+            print('Restarted')
         if 'job' not in self.leader:
             return
         job = self.leader['job']
@@ -150,7 +153,8 @@ class Head:
         print('Executing', case)
         while self.count_comm('done_write') < case['workers']:
             time.sleep(1)
-        print('Done writing')
+        finish_time = datetime.datetime.now()
+        print('Done writing', finish_time - start_time)
 
         self.collect_stats()
 
@@ -158,7 +162,7 @@ class Head:
         pass
 
 
-test_cases = [{'entries': 120, 'workers': 1000, 'dimention': 10}]
+test_cases = [{'entries': 300, 'workers': 20, 'dimention': 100}]
 
 types = {'server': Server, 'client': Client, 'head': Head}
 
