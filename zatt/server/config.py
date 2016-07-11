@@ -1,6 +1,6 @@
 import argparse
 import os
-import ujson as json
+import json
 
 
 parser = argparse.ArgumentParser(description=('Zatt. An implementation of '
