@@ -84,9 +84,7 @@ class State:
                'persist': {'votedFor': self.persist['votedFor'],
                            'currentTerm': self.persist['currentTerm']},
                'volatile': self.volatile,
-               'log': {'commitIndex': self.log.commitIndex,
-                       'log': self.log.log.__dict__,
-                       'state_machine': self.log.state_machine.__dict__},
+               'log': {'commitIndex': self.log.commitIndex},
                'stats': self.stats.data}
         msg['volatile']['cluster'] = list(msg['volatile']['cluster'])
 
