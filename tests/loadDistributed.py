@@ -158,6 +158,7 @@ class Head:
 
             except Exception as e:
                 print('Errors while waiting for clients to checkin', e)
+                time.sleep(1)
 
         start_time = datetime.datetime.now() + datetime.timedelta(seconds=3)
         case.update({'clients': client_count,
