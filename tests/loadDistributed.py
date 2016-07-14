@@ -1,9 +1,11 @@
 import argparse
-import time
+import json
+import os
 import shutil
 import asyncio
 import datetime
 import dateutil.parser
+from time import sleep
 from multiprocessing import Process, Pool
 from utils import get_random_string
 from zatt.server.main import setup as serverSetup
@@ -20,17 +22,17 @@ class Server:
         self.create_server()
 
         while True:
-            time.sleep(2)
+            sleep(2)
             self.repeat()
 
     def repeat(self):
         self.leader.refresh()
         if 'restart' not in self.leader:
             return
-        time.sleep(2)  # for other nodes to acknowledge restart
+        sleep(2)  # for other nodes to acknowledge restart
         print('Stopping server')
         self.server.terminate()
-        time.sleep(2)
+        sleep(2)
         print('Removing files')
         shutil.rmtree('zatt.{}.persist'.format(self.address[1]))
         print('Starting')
@@ -46,13 +48,13 @@ class Server:
         self.server.start()
 
         if is_leader and self.address == self.leader_address:
-            time.sleep(1)
+            sleep(1)
             print('Restarting Leader to increment term')
             self.server.terminate()
             self.create_server(is_leader=False)  # prevents recurtion
-            time.sleep(1)
+            sleep(1)
         else:
-            time.sleep(3)
+            sleep(3)
         self.leader = DistributedDict(*self.leader_address)
         self.leader.config_cluster('add', *self.address)
 
@@ -71,7 +73,7 @@ class Client:
                 print('Connection refused')
             except KeyError:
                 print('Server Initialization')
-            time.sleep(15 if self.last_job else 1)
+            sleep(7 if self.last_job else 1)
 
     def broadcast(self, term, read=False):
         handle = '{}_{}'.format(term, self.prefix)
@@ -98,7 +100,7 @@ class Client:
         self.last_job = start_time
         self.run_pool(
             self.worker_writer, job['workers'],
-            [job['entries'] // job['machines'], job['dimention'],
+            [job['entries'] // job['clients'], job['dimention'],
              self.leader_address[0], self.leader_address[1]])
 
     def run_pool(self, func, workers, arguments=[]):
@@ -115,54 +117,84 @@ class Client:
         stub_value = 'a' * dimention
         for key in range(entries):
             client[worker_prefix + str(key)] = stub_value
-        self.leader['done_write_{}'.format(worker_prefix)] = True
 
 
 class Head:
     def __init__(self, args):
         self.leader_address = (args.leader_address, args.leader_port)
         self.leader = DistributedDict(*self.leader_address)
+        self.results = []
 
-        for test_case in test_cases:
-            self.send_test(test_case)
-
-    def count_comm(self, term):
-        self.leader.refresh()
-        return len(list(filter(lambda x: x.startswith(term), self.leader)))
+        print('Found {} test cases'.format(len(test_cases)))
+        for n, test_case in enumerate(test_cases):
+            ok = False
+            while not ok:
+                try:
+                    print('Executing test {} of {}'.format(n, len(test_cases)))
+                    self.send_test(test_case)
+                except Exception as e:
+                    print('Error!')
+                    print(e)
+                ok = input('Satisfied with result? ') == 'y'
 
     def send_test(self, case):
-        print('Initiating test case', case)
         print('Restarting...')
         self.leader['restart'] = True
         ready = False
+        sleep(7)
         while not ready:
             try:
                 self.leader.refresh()
-            except ConnectionRefusedError:
-                continue
-            print('Server count', len(self.leader['cluster']))
-            client_count = self.count_comm('checkin')
-            print('Client count', client_count)
+                client_count = len(list(filter(
+                    lambda x: x.startswith('checkin'), self.leader)))
+                print('Servers {}, Clients {}'.format(
+                    len(self.leader['cluster']), client_count))
+                ready = len(self.leader['cluster']) == expected_servers and\
+                    client_count == expected_clients
+                if ready:
+                    ready = input('Ready? ') == 'y'
+                else:
+                    sleep(1)
 
-            ready = input('Everybody online? ') in ['y', 'Y', 'yes']
+            except Exception as e:
+                print('Errors while waiting for clients to checkin', e)
 
-        start_time = datetime.datetime.now() + datetime.timedelta(seconds=10)
-        case.update({'machines': client_count,
+        start_time = datetime.datetime.now() + datetime.timedelta(seconds=3)
+        case.update({'clients': client_count,
                      'start_time': start_time.isoformat()})
         self.leader['job'] = case
         print('Executing', case)
-        while self.count_comm('done_write') < case['workers']:
-            time.sleep(1)
+        self.collect_stats(start_time, case)
+
+    def collect_stats(self, start_time, case):
+        count = 0
+        while self.leader.diagnostic['log']['commitIndex'] <= case['entries']:
+            sleep(0.2)
+            count += 1
+            if count == 5 * 30:  # 30 seconds
+                count = 0
+                if input('Break? '):
+                    break
+
         finish_time = datetime.datetime.now()
-        print('Done writing', finish_time - start_time)
+        print('Done writing in ', finish_time - start_time)
+        self.results.append(
+            {'elapsed_time': (finish_time - start_time).total_seconds(),
+             'config': case,
+             'diagnostic': self.leader.diagnostic})
+        with open('result_{}.json'.format(finish_time.isoformat()), 'w+') as f:
+            f.write(json.dumps(self.results, indent=2, sort_keys=True))
 
-        self.collect_stats()
 
-    def collect_stats(self):
-        pass
+# test_cases = [{'entries': 5000, 'workers': 128, 'dimention': 100}]
+test_cases = [{'entries': entries, 'workers': workers, 'dimention': dimention}
+              for entries in [10, 100, 1000, 5000, 10000]
+              for workers in [10, 100, 256]
+              for dimention in [100, 1000]
+              if entries > workers]
+expected_servers = 2
+expected_clients = 1
 
-
-test_cases = [{'entries': 300, 'workers': 20, 'dimention': 100}]
 
 types = {'server': Server, 'client': Client, 'head': Head}
 
