@@ -136,6 +136,15 @@ class Head:
                     print('Error!')
                     print(e)
                 ok = input('Satisfied with result? ') == 'y'
+                comment = input('Comment?')
+                if ok:
+                    self.results[-1]['comment'] = comment
+                    with open('result_{}.json'.format(
+                            datetime.datetime.now().isoformat()), 'w+') as f:
+                        f.write(json.dumps(self.results, indent=2,
+                                           sort_keys=True))
+                else:
+                    del self.results[-1]
 
     def send_test(self, case):
         print('Restarting...')
@@ -158,7 +167,7 @@ class Head:
 
             except Exception as e:
                 print('Errors while waiting for clients to checkin', e)
-                time.sleep(1)
+                sleep(1)
 
         start_time = datetime.datetime.now() + datetime.timedelta(seconds=3)
         case.update({'clients': client_count,
@@ -183,8 +192,6 @@ class Head:
             {'elapsed_time': (finish_time - start_time).total_seconds(),
              'config': case,
              'diagnostic': self.leader.diagnostic})
-        with open('result_{}.json'.format(finish_time.isoformat()), 'w+') as f:
-            f.write(json.dumps(self.results, indent=2, sort_keys=True))
 
 
 # test_cases = [{'entries': 5000, 'workers': 128, 'dimention': 100}]
