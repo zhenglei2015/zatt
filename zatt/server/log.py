@@ -48,7 +48,7 @@ class Compactor():
             self.persist()
             logger.debug('Using parameters')
         elif os.path.isfile(self.path):
-            with open(self.path, 'r') as f:
+            with open(self.path, 'rb') as f:
                 self.__dict__.update(msgpack.unpack(f, encoding='utf-8'))
             logger.debug('Using persisted data')
 
