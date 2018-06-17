@@ -156,12 +156,14 @@ class Follower(State):
         Data from log compaction is always accepted.
         In the end, the log is scanned for a new cluster config.
         """
-        self.restart_election_timer()
 
         term_is_current = msg['term'] >= self.persist['currentTerm']
         prev_log_term_match = msg['prevLogTerm'] is None or\
             self.log.term(msg['prevLogIndex']) == msg['prevLogTerm']
         success = term_is_current and prev_log_term_match
+        
+        if term_is_current:
+            self.restart_election_timer()
 
         if 'compact_data' in msg:
             self.log = LogManager(compact_count=msg['compact_count'],
