@@ -336,6 +336,7 @@ class Leader(State):
             del self.waiting_clients[index]
 
     def on_client_config(self, protocol, msg):
+        print('msg', msg)
         """Push new cluster config. When uncommitted cluster changes
         are already present, retries until they are committed
         before proceding."""

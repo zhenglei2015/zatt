@@ -30,6 +30,10 @@ class AbstractClient:
         self.server_address = tuple(random.choice(self.data['cluster']))
         return self._request({'type': 'get'})
 
+    def _get_id(self):
+        self.server_address = tuple(random.choice(self.data['cluster']))
+        return self._request({'type': 'getid'})
+
     def _append_log(self, payload):
         """Append to remote log."""
         return self._request({'type': 'append', 'data': payload})

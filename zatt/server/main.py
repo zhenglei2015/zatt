@@ -20,7 +20,7 @@ def setup(config={}):
 
     coro = loop.create_server(lambda: ClientProtocol(orchestrator),
                               *config.address)
-    server = loop.run_until_complete(coro)
+    server = loop.run_until_complete(coro) # add two listen event
 
     logger.info('Serving on %s', config.address)
     return server

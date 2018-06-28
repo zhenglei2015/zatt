@@ -41,7 +41,7 @@ class TallyCounter:
         self.data = {c: {'current': 0, 'past': collections.deque(maxlen=10)}
                      for c in categories}
         loop = asyncio.get_event_loop()
-        loop.call_later(1, self._tick)
+        loop.call_later(1, self._tick) # log info every second
 
     def _tick(self):
         for name, category in self.data.items():
