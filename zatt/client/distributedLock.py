@@ -28,3 +28,7 @@ class DistributedLock(AbstractClient):
                 break
         # TODO: logging
         return response
+
+    def refresh(self, force=False):
+        if force or self.refresh_policy.can_update():
+            self.data = self._get_state()
