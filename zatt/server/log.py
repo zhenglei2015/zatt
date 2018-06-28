@@ -9,6 +9,7 @@ from zatt.server import utils
 logger = logging.getLogger(__name__)
 
 
+#database
 class Log(collections.UserList):
     def __init__(self, erase_log=False):
         super().__init__()

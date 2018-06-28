@@ -16,11 +16,28 @@ class DistributedLock(AbstractClient):
 
 
     def TryLock(self, key):
-        self._append_log({'action': 'change', 'key': key, 'value': self.id})
+        self.refresh(force=True)
+        if self.data.hasKey(key):
+            print("Lock Failed!Already have the key")
+            return False
+        else:
+            self._append_log({'action': 'change', 'key': key, 'value': self.id})
+
+    def ReleaseLock(self, key):
+        self.refresh(force=True)
+        if self.data.hasKey(key) and self.data[key] == self.id:
+            del self.data[key]
+            self._append_log({'action': 'delete', 'key': key})
+            return True
+        else:
+            return False
 
     def OwnTheLock(self, key):
-        self.refresh()
-        return self.data[key] == self.id
+        self.refresh(force=True)
+        if self.data.hasKey(self.id) and self.data[key] == self.id:
+            return True
+        else:
+            return False
 
     def _append_log(self, payload):
         for attempt in range(self.append_retry_attempts):
