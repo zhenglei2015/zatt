@@ -309,6 +309,7 @@ class Leader(State):
             self.nextIndex[peer] = max(0, self.nextIndex[peer] - 1)
 
     def on_client_append(self, protocol, msg):
+        print('msg', msg)
         """Append new entries to Leader log."""
         entry = {'term': self.persist['currentTerm'], 'data': msg['data']}
         if msg['data']['key'] == 'cluster':
@@ -336,7 +337,6 @@ class Leader(State):
             del self.waiting_clients[index]
 
     def on_client_config(self, protocol, msg):
-        print('msg', msg)
         """Push new cluster config. When uncommitted cluster changes
         are already present, retries until they are committed
         before proceding."""
