@@ -309,7 +309,6 @@ class Leader(State):
             self.nextIndex[peer] = max(0, self.nextIndex[peer] - 1)
 
     def on_client_append(self, protocol, msg):
-        print('msg', msg)
         """Append new entries to Leader log."""
         entry = {'term': self.persist['currentTerm'], 'data': msg['data']}
         if msg['data']['key'] == 'cluster':

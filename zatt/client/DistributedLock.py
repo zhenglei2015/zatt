@@ -14,13 +14,12 @@ class Distributelock(AbstractClient):
         self.id = 123456
 
 
-    def TryLock(self):
-        self._append_log({'action': 'lock', 'id': self.id})
-        response = super()._append_log(payload)
-        if response['success']:
-            print("success lock")
-        else:
-            print("lock failed")
+    def TryLock(self, key):
+        self._append_log({'action': 'change', 'key': key, 'value': self.id})
+
+    def OwnTheLock(self, key):
+        self.refresh()
+        return self.data[key] == self.id
 
     def _append_log(self, payload):
         for attempt in range(self.append_retry_attempts):
