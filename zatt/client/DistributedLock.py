@@ -3,7 +3,7 @@ from zatt.client.abstractClient import AbstractClient
 from zatt.client.refresh_policies import RefreshPolicyAlways
 
 
-class Distributelock(AbstractClient):
+class DistributedLock(AbstractClient):
     def __init__(self, addr, port, append_retry_attempts=3,
                  refresh_policy=RefreshPolicyAlways()):
         super().__init__()
