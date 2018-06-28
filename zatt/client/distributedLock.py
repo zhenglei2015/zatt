@@ -7,6 +7,7 @@ class DistributedLock(AbstractClient):
     def __init__(self, addr, port, append_retry_attempts=3,
                  refresh_policy=RefreshPolicyAlways()):
         super().__init__()
+        self.data = {}
         self.data['cluster'] = [(addr, port)]
         self.append_retry_attempts = append_retry_attempts
         self.refresh_policy = refresh_policy
